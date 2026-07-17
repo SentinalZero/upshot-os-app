@@ -1,56 +1,174 @@
 import { supabase } from "./supabase";
 
-// ─── Types ──────────────────────────────────────────────────────────────────
-
 export interface DigitalSpecialist {
   id: string;
-  organization_id: string;
-  created_by: string;
+  organization_id: string | null;
   name: string;
-  role_key: string;
-  role_name: string;
-  industry_key: string;
-  industry_name: string;
-  description: string | null;
-  status: string;
-  oversight_mode: string;
-  selected_systems: string[];
-  configuration: Record<string, unknown>;
+  role_name: string | null;
+  industry_name: string | null;
+  status: string | null;
+  framework_lifecycle_status: string;
+  oversight_mode: string | null;
+  selected_systems: string[] | null;
   deployed_at: string | null;
-  created_at: string;
-}
-
-export interface Workflow {
-  id: string;
-  organization_id: string;
-  digital_specialist_id: string;
-  created_by: string;
-  name: string;
-  workflow_key: string;
-  description: string | null;
-  status: string;
-  trigger_type: string;
-  trigger_configuration: Record<string, unknown>;
-  workflow_configuration: Record<string, unknown>;
-  baseline_minutes: number | null;
-  requires_approval: boolean;
-  created_at: string;
+  created_at: string | null;
 }
 
 export interface ActivityLog {
   id: string;
-  organization_id: string;
+  organization_id: string | null;
   digital_specialist_id: string | null;
-  actor_user_id: string | null;
-  activity_type: string;
-  title: string;
+  event_type: string | null;
+  activity_type: string | null;
+  title: string | null;
   description: string | null;
-  severity: string;
+  message: string | null;
+  severity: string | null;
   metadata: Record<string, unknown> | null;
-  created_at: string;
+  created_at: string | null;
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+export interface DashboardMetrics {
+  totalSpecialists: number;
+  activeSpecialists: number;
+  deployedWorkflows: number;
+  executionsToday: number;
+  successfulExecutionsToday: number;
+  failedExecutionsToday: number;
+  successRateToday: number;
+  needsHumanReview: number;
+}
+
+export interface DashboardData {
+  specialists: DigitalSpecialist[];
+  workflowCounts: Record<string, number>;
+  recentActivity: ActivityLog[];
+  metrics: DashboardMetrics;
+  errors: string[];
+}
+
+function isActiveSpecialist(specialist: DigitalSpecialist): boolean {
+  const statuses = [specialist.status, specialist.framework_lifecycle_status]
+    .filter(Boolean)
+    .map(value => String(value).toLowerCase());
+  return statuses.some(value => ["active", "running", "deployed"].includes(value));
+}
+
+function requiresReview(activity: ActivityLog): boolean {
+  const severity = activity.severity?.toLowerCase();
+  const metadataValue = activity.metadata?.requires_human_attention;
+  return severity === "warning" || severity === "critical" || metadataValue === true || metadataValue === "true";
+}
+
+function startOfLocalDayIso(): string {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return start.toISOString();
+}
+
+export async function fetchSpecialists(organizationId: string): Promise<DigitalSpecialist[]> {
+  if (!supabase) return [];
+  const { data, error } = await supabase
+    .from("digital_specialists")
+    .select("id, organization_id, name, role_name, industry_name, status, framework_lifecycle_status, oversight_mode, selected_systems, deployed_at, created_at")
+    .eq("organization_id", organizationId)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("[DashboardService] fetchSpecialists error:", error);
+    return [];
+  }
+  return (data || []) as DigitalSpecialist[];
+}
+
+export async function fetchDashboardData(organizationId: string): Promise<DashboardData> {
+  const empty: DashboardData = {
+    specialists: [],
+    workflowCounts: {},
+    recentActivity: [],
+    metrics: {
+      totalSpecialists: 0,
+      activeSpecialists: 0,
+      deployedWorkflows: 0,
+      executionsToday: 0,
+      successfulExecutionsToday: 0,
+      failedExecutionsToday: 0,
+      successRateToday: 0,
+      needsHumanReview: 0,
+    },
+    errors: [],
+  };
+
+  if (!supabase) {
+    return { ...empty, errors: ["Supabase is not configured."] };
+  }
+
+  const today = startOfLocalDayIso();
+
+  const [specialistsResult, deploymentsResult, executionsResult, activityResult] = await Promise.all([
+    supabase
+      .from("digital_specialists")
+      .select("id, organization_id, name, role_name, industry_name, status, framework_lifecycle_status, oversight_mode, selected_systems, deployed_at, created_at")
+      .eq("organization_id", organizationId)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("specialist_workflow_deployments")
+      .select("id, specialist_id, status")
+      .eq("organization_id", organizationId),
+    supabase
+      .from("workflow_executions")
+      .select("id, status")
+      .eq("organization_id", organizationId)
+      .gte("created_at", today),
+    supabase
+      .from("activity_logs")
+      .select("id, organization_id, digital_specialist_id, event_type, activity_type, title, description, message, severity, metadata, created_at")
+      .eq("organization_id", organizationId)
+      .order("created_at", { ascending: false })
+      .limit(20),
+  ]);
+
+  const errors: string[] = [];
+  if (specialistsResult.error) errors.push(`Specialists: ${specialistsResult.error.message}`);
+  if (deploymentsResult.error) errors.push(`Workflow deployments: ${deploymentsResult.error.message}`);
+  if (executionsResult.error) errors.push(`Executions: ${executionsResult.error.message}`);
+  if (activityResult.error) errors.push(`Activity: ${activityResult.error.message}`);
+
+  const specialists = (specialistsResult.data || []) as DigitalSpecialist[];
+  const deployments = deploymentsResult.data || [];
+  const executions = executionsResult.data || [];
+  const recentActivity = (activityResult.data || []) as ActivityLog[];
+
+  const workflowCounts: Record<string, number> = {};
+  for (const deployment of deployments) {
+    if (deployment.specialist_id) {
+      workflowCounts[deployment.specialist_id] = (workflowCounts[deployment.specialist_id] || 0) + 1;
+    }
+  }
+
+  const successfulStatuses = new Set(["successful", "success", "completed"]);
+  const failedStatuses = new Set(["failed", "error"]);
+  const successfulExecutionsToday = executions.filter(item => successfulStatuses.has(String(item.status).toLowerCase())).length;
+  const failedExecutionsToday = executions.filter(item => failedStatuses.has(String(item.status).toLowerCase())).length;
+  const executionsToday = executions.length;
+
+  return {
+    specialists,
+    workflowCounts,
+    recentActivity,
+    metrics: {
+      totalSpecialists: specialists.length,
+      activeSpecialists: specialists.filter(isActiveSpecialist).length,
+      deployedWorkflows: deployments.length,
+      executionsToday,
+      successfulExecutionsToday,
+      failedExecutionsToday,
+      successRateToday: executionsToday > 0 ? Math.round((successfulExecutionsToday / executionsToday) * 1000) / 10 : 0,
+      needsHumanReview: recentActivity.filter(requiresReview).length,
+    },
+    errors,
+  };
+}
 
 export function toSlug(text: string): string {
   return text
@@ -62,21 +180,13 @@ export function toSlug(text: string): string {
 }
 
 export function mapOversightMode(oversightRules: string[]): "autonomous" | "approval_required" | "escalation_only" {
-  // If the user selected approval-type rules, use approval_required
-  // If they selected escalation-type rules only, use escalation_only
-  // If no rules or minimal rules, default to approval_required for safety
   if (oversightRules.length === 0) return "autonomous";
-  
   const escalationKeywords = ["escalat", "route", "handoff"];
   const allEscalation = oversightRules.every(rule =>
-    escalationKeywords.some(kw => rule.toLowerCase().includes(kw))
+    escalationKeywords.some(keyword => rule.toLowerCase().includes(keyword)),
   );
-  
-  if (allEscalation) return "escalation_only";
-  return "approval_required";
+  return allEscalation ? "escalation_only" : "approval_required";
 }
-
-// ─── Deploy Digital Specialist ───────────────────────────────────────────────
 
 export interface DeployConfig {
   organizationId: string;
@@ -96,167 +206,32 @@ export interface DeployConfig {
 export interface DeployResult {
   success: boolean;
   specialistId?: string;
-  workflowIds?: string[];
   error?: string;
 }
 
 export async function deployDigitalSpecialist(config: DeployConfig): Promise<DeployResult> {
   if (!supabase) return { success: false, error: "Supabase not configured" };
 
-  try {
-    // 1. Insert the Digital Specialist
-    const { data: specialist, error: specialistError } = await supabase
-      .from("digital_specialists")
-      .insert({
-        organization_id: config.organizationId,
-        created_by: config.userId,
-        name: config.name,
-        role_key: config.roleKey,
-        role_name: config.roleName,
-        industry_key: config.industryKey,
-        industry_name: config.industryName,
-        description: config.description || null,
-        status: "active",
-        oversight_mode: config.oversightMode,
-        selected_systems: config.selectedSystems,
-        configuration: config.configuration,
-        deployed_at: new Date().toISOString(),
-      })
-      .select("id")
-      .single();
-
-    if (specialistError) {
-      console.error("[DeployService] Specialist insert failed:", specialistError);
-      return { success: false, error: `Failed to create Digital Specialist: ${specialistError.message}` };
-    }
-
-    const specialistId = specialist.id;
-
-    // 2. Insert workflows
-    const workflowRecords = config.tasks.map(task => ({
-      organization_id: config.organizationId,
-      digital_specialist_id: specialistId,
-      created_by: config.userId,
-      name: task.name,
-      workflow_key: task.workflowKey,
-      description: task.description || null,
-      status: "draft",
-      trigger_type: "manual",
-      trigger_configuration: {},
-      workflow_configuration: {},
-      baseline_minutes: null,
-      requires_approval: config.oversightMode === "approval_required",
-    }));
-
-    const { data: workflows, error: workflowError } = await supabase
-      .from("workflows")
-      .insert(workflowRecords)
-      .select("id");
-
-    if (workflowError) {
-      console.error("[DeployService] Workflow insert failed:", workflowError);
-      // Specialist was created but workflows failed — report partial failure
-      return { success: false, specialistId, error: `Specialist created but workflow creation failed: ${workflowError.message}` };
-    }
-
-    const workflowIds = workflows?.map(w => w.id) || [];
-
-    // 3. Insert activity log
-    const { error: logError } = await supabase
-      .from("activity_logs")
-      .insert({
-        organization_id: config.organizationId,
-        digital_specialist_id: specialistId,
-        actor_user_id: config.userId,
-        activity_type: "specialist_deployed",
-        title: "Digital Specialist deployed",
-        description: `${config.name} was successfully deployed.`,
-        severity: "success",
-        metadata: {
-          role: config.roleName,
-          industry: config.industryName,
-          workflow_count: workflowIds.length,
-          selected_systems: config.selectedSystems,
-          oversight_mode: config.oversightMode,
-        },
-      });
-
-    if (logError) {
-      console.error("[DeployService] Activity log insert failed:", logError);
-      // Non-critical — specialist and workflows are created
-    }
-
-    return { success: true, specialistId, workflowIds };
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Unknown error during deployment";
-    console.error("[DeployService] Unexpected error:", err);
-    return { success: false, error: message };
-  }
-}
-
-// ─── Fetch Dashboard Data ────────────────────────────────────────────────────
-
-export async function fetchSpecialists(organizationId: string): Promise<DigitalSpecialist[]> {
-  if (!supabase) return [];
-  const { data, error } = await supabase
+  const { data: specialist, error } = await supabase
     .from("digital_specialists")
-    .select("*")
-    .eq("organization_id", organizationId)
-    .order("created_at", { ascending: false });
+    .insert({
+      organization_id: config.organizationId,
+      created_by: config.userId,
+      name: config.name,
+      role_key: config.roleKey,
+      role_name: config.roleName,
+      industry_key: config.industryKey,
+      industry_name: config.industryName,
+      description: config.description || null,
+      status: "active",
+      oversight_mode: config.oversightMode,
+      selected_systems: config.selectedSystems,
+      configuration: config.configuration,
+      deployed_at: new Date().toISOString(),
+    })
+    .select("id")
+    .single();
 
-  if (error) {
-    console.error("[DashboardService] fetchSpecialists error:", error);
-    return [];
-  }
-  return data || [];
-}
-
-export async function fetchWorkflowCounts(organizationId: string): Promise<Record<string, number>> {
-  if (!supabase) return {};
-  const { data, error } = await supabase
-    .from("workflows")
-    .select("digital_specialist_id")
-    .eq("organization_id", organizationId);
-
-  if (error) {
-    console.error("[DashboardService] fetchWorkflowCounts error:", error);
-    return {};
-  }
-
-  const counts: Record<string, number> = {};
-  (data || []).forEach(row => {
-    const id = row.digital_specialist_id;
-    if (id) counts[id] = (counts[id] || 0) + 1;
-  });
-  return counts;
-}
-
-export async function fetchRecentActivity(organizationId: string, limit = 20): Promise<ActivityLog[]> {
-  if (!supabase) return [];
-  const { data, error } = await supabase
-    .from("activity_logs")
-    .select("*")
-    .eq("organization_id", organizationId)
-    .order("created_at", { ascending: false })
-    .limit(limit);
-
-  if (error) {
-    console.error("[DashboardService] fetchRecentActivity error:", error);
-    return [];
-  }
-  return data || [];
-}
-
-export async function fetchTotalWorkflows(organizationId: string): Promise<number> {
-  if (!supabase) return 0;
-  const { count, error } = await supabase
-    .from("workflows")
-    .select("*", { count: "exact", head: true })
-    .eq("organization_id", organizationId);
-
-  if (error) {
-    console.error("[DashboardService] fetchTotalWorkflows error:", error);
-    return 0;
-  }
-  return count || 0;
+  if (error) return { success: false, error: error.message };
+  return { success: true, specialistId: specialist.id };
 }

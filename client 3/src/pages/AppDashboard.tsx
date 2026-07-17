@@ -2,8 +2,10 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import {
-  fetchDashboardData,
-  type DashboardMetrics,
+  fetchSpecialists,
+  fetchWorkflowCounts,
+  fetchRecentActivity,
+  fetchTotalWorkflows,
   type DigitalSpecialist,
   type ActivityLog,
 } from "@/lib/supabaseService";
@@ -18,19 +20,9 @@ export default function AppDashboard() {
   const [specialists, setSpecialists] = useState<DigitalSpecialist[]>([]);
   const [workflowCounts, setWorkflowCounts] = useState<Record<string, number>>({});
   const [recentActivity, setRecentActivity] = useState<ActivityLog[]>([]);
-  const [metrics, setMetrics] = useState<DashboardMetrics>({
-    totalSpecialists: 0,
-    activeSpecialists: 0,
-    deployedWorkflows: 0,
-    executionsToday: 0,
-    successfulExecutionsToday: 0,
-    failedExecutionsToday: 0,
-    successRateToday: 0,
-    needsHumanReview: 0,
-  });
+  const [totalWorkflows, setTotalWorkflows] = useState(0);
   const [connectionCounts, setConnectionCounts] = useState<ConnectionCounts>({ connected: 0, selected: 0, attentionRequired: 0 });
   const [loading, setLoading] = useState(true);
-  const [dataErrors, setDataErrors] = useState<string[]>([]);
 
   useEffect(() => {
     if (!profile?.active_organization_id) return;
@@ -38,15 +30,17 @@ export default function AppDashboard() {
 
     async function loadData() {
       setLoading(true);
-      const [dashboardData, connCounts] = await Promise.all([
-        fetchDashboardData(orgId),
+      const [specs, wfCounts, activity, wfTotal, connCounts] = await Promise.all([
+        fetchSpecialists(orgId),
+        fetchWorkflowCounts(orgId),
+        fetchRecentActivity(orgId, 10),
+        fetchTotalWorkflows(orgId),
         fetchConnectionCounts(orgId),
       ]);
-      setSpecialists(dashboardData.specialists);
-      setWorkflowCounts(dashboardData.workflowCounts);
-      setRecentActivity(dashboardData.recentActivity);
-      setMetrics(dashboardData.metrics);
-      setDataErrors(dashboardData.errors);
+      setSpecialists(specs);
+      setWorkflowCounts(wfCounts);
+      setRecentActivity(activity);
+      setTotalWorkflows(wfTotal);
       setConnectionCounts(connCounts);
       setLoading(false);
     }
@@ -63,10 +57,7 @@ export default function AppDashboard() {
     ? `${profile.first_name}${profile.last_name ? ` ${profile.last_name}` : ""}`
     : user?.email || "User";
 
-  const activeSpecialists = specialists.filter(s => {
-    const statuses = [s.status, s.framework_lifecycle_status].filter(Boolean).map(value => String(value).toLowerCase());
-    return statuses.some(value => ["active", "running", "deployed"].includes(value));
-  });
+  const activeSpecialists = specialists.filter(s => s.status === "active");
 
   return (
     <div className="min-h-screen bg-background">
@@ -126,21 +117,12 @@ export default function AppDashboard() {
 
         {/* Metrics */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
-          <MetricCard label="Active Specialists" value={metrics.activeSpecialists.toString()} />
-          <MetricCard label="Executions Today" value={metrics.executionsToday.toString()} />
-          <MetricCard label="Success Rate" value={`${metrics.successRateToday}%`} />
-          <MetricCard label="Deployed Workflows" value={metrics.deployedWorkflows.toString()} />
-          <MetricCard label="Needs Review" value={metrics.needsHumanReview.toString()} highlight={metrics.needsHumanReview > 0} />
+          <MetricCard label="Active Specialists" value={activeSpecialists.length.toString()} />
+          <MetricCard label="Total Specialists" value={specialists.length.toString()} />
+          <MetricCard label="Configured Workflows" value={totalWorkflows.toString()} />
+          <MetricCard label="Connected Systems" value={connectionCounts.connected.toString()} />
+          <MetricCard label="Attention Required" value={connectionCounts.attentionRequired.toString()} highlight={connectionCounts.attentionRequired > 0} />
         </div>
-
-        {dataErrors.length > 0 && (
-          <div className="rounded-xl border border-[oklch(0.62_0.22_25/40%)] bg-[oklch(0.62_0.22_25/8%)] p-4 mb-6">
-            <p className="text-xs font-semibold text-[oklch(0.75_0.18_25)] mb-1">Some live data could not be loaded</p>
-            {dataErrors.map(error => (
-              <p key={error} className="text-[11px] text-muted-foreground">{error}</p>
-            ))}
-          </div>
-        )}
 
         {/* Connections Summary */}
         <div className="rounded-2xl border border-subtle bg-surface p-5 mb-8">
@@ -204,7 +186,7 @@ export default function AppDashboard() {
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate">{spec.name}</p>
                         <p className="text-[11px] text-muted-foreground">
-                          {spec.role_name || "Digital Specialist"} &middot; {spec.industry_name || "General"} &middot; {(spec.oversight_mode || "approval_required").replace("_", " ")} &middot; {(spec.selected_systems || []).length} systems
+                          {spec.role_name} &middot; {spec.industry_name} &middot; {spec.oversight_mode.replace("_", " ")} &middot; {(spec.selected_systems || []).length} systems
                         </p>
                       </div>
                       <div className="text-right">
@@ -249,11 +231,11 @@ export default function AppDashboard() {
                         item.severity === "warning" ? "bg-gold" : "bg-[oklch(0.62_0.22_25)]"
                       }`} />
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{item.title || item.message || "Workflow activity"}</p>
-                        <p className="text-[11px] text-muted-foreground">{item.description || item.message || item.activity_type || item.event_type || "Activity recorded"}</p>
+                        <p className="text-sm font-medium truncate">{item.title}</p>
+                        <p className="text-[11px] text-muted-foreground">{item.description || item.activity_type}</p>
                       </div>
                       <span className="text-[10px] font-mono text-muted-foreground whitespace-nowrap">
-                        {item.created_at ? new Date(item.created_at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "—"}
+                        {new Date(item.created_at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
                       </span>
                     </div>
                   ))}
