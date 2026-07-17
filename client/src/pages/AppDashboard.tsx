@@ -66,7 +66,7 @@ export default function AppDashboard() {
         <div className="container flex items-center justify-between h-[64px]">
           <div className="flex items-center gap-4">
             <Link href="/">
-              <img src="/manus-storage/upshot-theory-logo_f207295d.png" alt="Upshot Theory" className="h-10 w-auto" />
+              <img src="/assets/upshot-theory-logo.png" alt="Upshot Theory" className="h-10 w-auto" />
             </Link>
             <div className="hidden sm:flex items-center gap-2 ml-4">
               <span className="text-[10px] font-mono text-muted-foreground tracking-wider uppercase">Command Center</span>

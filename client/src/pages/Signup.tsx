@@ -47,7 +47,7 @@ export default function Signup() {
         <div className="w-full max-w-[420px]">
           <div className="flex justify-center mb-8">
             <a href="/">
-              <img src="/manus-storage/upshot-theory-logo_f207295d.png" alt="Upshot Theory" className="h-14 w-auto" />
+              <img src="/assets/upshot-theory-logo.png" alt="Upshot Theory" className="h-14 w-auto" />
             </a>
           </div>
           <div className="rounded-2xl border border-subtle bg-surface p-8 text-center">
@@ -98,7 +98,7 @@ export default function Signup() {
       <div className="w-full max-w-[420px]">
         <div className="flex justify-center mb-8">
           <a href="/">
-            <img src="/manus-storage/upshot-theory-logo_f207295d.png" alt="Upshot Theory" className="h-14 w-auto" />
+            <img src="/assets/upshot-theory-logo.png" alt="Upshot Theory" className="h-14 w-auto" />
           </a>
         </div>
 

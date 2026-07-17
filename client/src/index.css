@@ -181,3 +181,6 @@ html {
 .animate-pulse-dot {
   animation: pulse-dot 2s ease-in-out infinite;
 }
+
+html { scroll-behavior: smooth; scroll-padding-top: 88px; }
+section[id] { scroll-margin-top: 88px; }

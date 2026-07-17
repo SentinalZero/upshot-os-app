@@ -7,7 +7,7 @@ export function Footer() {
         <div className="relative flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
           <div className="flex items-center gap-4">
             <img
-              src="/manus-storage/upshot-theory-logo_f207295d.png"
+              src="/assets/upshot-theory-logo.png"
               alt="Upshot Theory"
               className="h-10 w-auto"
             />

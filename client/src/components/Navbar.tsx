@@ -14,6 +14,15 @@ export function Navbar() {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
+  const scrollToSection = (href: string) => {
+    const target = document.querySelector(href);
+    if (target) {
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+      window.history.replaceState(null, "", href);
+    }
+    setMobileOpen(false);
+  };
+
   const navLinks = [
     { label: "Product", href: "#product" },
     { label: "Solutions", href: "#solutions" },
@@ -34,7 +43,7 @@ export function Navbar() {
         {/* Logo */}
         <a href="#top" className="flex items-center gap-4">
           <img
-            src="/manus-storage/upshot-theory-logo_f207295d.png"
+            src="/assets/upshot-theory-logo.png"
             alt="Upshot Theory"
             className="h-12 w-auto"
           />
@@ -46,6 +55,7 @@ export function Navbar() {
             <a
               key={link.href}
               href={link.href}
+              onClick={(event) => { event.preventDefault(); scrollToSection(link.href); }}
               className="text-[13px] font-mono font-medium tracking-wide uppercase text-muted-foreground hover:text-foreground transition-colors duration-150"
             >
               {link.label}
@@ -107,7 +117,7 @@ export function Navbar() {
               <a
                 key={link.href}
                 href={link.href}
-                onClick={() => setMobileOpen(false)}
+                onClick={(event) => { event.preventDefault(); scrollToSection(link.href); }}
                 className="text-base font-medium text-muted-foreground hover:text-foreground"
               >
                 {link.label}

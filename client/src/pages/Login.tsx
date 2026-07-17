@@ -57,7 +57,7 @@ export default function Login() {
         <div className="flex justify-center mb-8">
           <a href="/">
             <img
-              src="/manus-storage/upshot-theory-logo_f207295d.png"
+              src="/assets/upshot-theory-logo.png"
               alt="Upshot Theory"
               className="h-14 w-auto"
             />

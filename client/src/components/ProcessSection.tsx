@@ -82,7 +82,7 @@ export function ProcessSection() {
           className="mt-16 rounded-2xl overflow-hidden border border-subtle relative"
         >
           <img
-            src="/manus-storage/workflow-abstract_f3a77d9f.png"
+            src="/assets/workflow-abstract.jpg"
             alt="Automated workflow visualization"
             className="w-full h-auto opacity-70"
           />

@@ -59,7 +59,7 @@ export default function OnboardingOrganization() {
       <div className="w-full max-w-[480px]">
         <div className="flex justify-center mb-8">
           <a href="/">
-            <img src="/manus-storage/upshot-theory-logo_f207295d.png" alt="Upshot Theory" className="h-14 w-auto" />
+            <img src="/assets/upshot-theory-logo.png" alt="Upshot Theory" className="h-14 w-auto" />
           </a>
         </div>
 

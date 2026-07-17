@@ -29,7 +29,7 @@ export function ProductSection() {
           >
             <div className="rounded-2xl overflow-hidden border border-subtle relative">
               <img
-                src="/manus-storage/dashboard-glow_42cde703.png"
+                src="/assets/dashboard-glow.jpg"
                 alt="Upshot OS Dashboard"
                 className="w-full h-auto"
               />
@@ -51,7 +51,7 @@ export function ProductSection() {
           >
             <div className="flex items-center gap-3 mb-5">
               <img
-                src="/manus-storage/upshot-os-logo-light_ff4f13c3.png"
+                src="/assets/upshot-os-logo.png"
                 alt="Upshot OS"
                 className="h-10 w-auto"
               />

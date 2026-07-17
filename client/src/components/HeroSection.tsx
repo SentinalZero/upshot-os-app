@@ -44,7 +44,7 @@ export function HeroSection() {
       {/* Background */}
       <div className="absolute inset-0 z-0">
         <img
-          src="/manus-storage/hero-abstract_f9ac2a47.png"
+          src="/assets/hero-abstract.jpg"
           alt=""
           className="w-full h-full object-cover opacity-30"
         />
@@ -66,7 +66,7 @@ export function HeroSection() {
               className="flex items-center gap-3 mb-6"
             >
               <img
-                src="/manus-storage/upshot-os-logo-light_ff4f13c3.png"
+                src="/assets/upshot-os-logo.png"
                 alt="Upshot OS"
                 className="h-10 w-auto"
               />
