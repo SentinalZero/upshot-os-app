@@ -6,18 +6,11 @@
  *
  * Requires authenticated user (JWT in Authorization header).
  * Returns a JSON response with the Google consent URL.
- *
- * Secrets required:
- *   - GOOGLE_CLIENT_ID
- *   - GOOGLE_REDIRECT_URI (the callback Edge Function URL)
- *
- * Never exposes GOOGLE_CLIENT_SECRET to this function's response.
  */
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { corsHeaders, handleCors } from "../_shared/cors.ts";
-import { getAuthenticatedUser } from "../_shared/supabase-admin.ts";
-import { getSupabaseAdmin } from "../_shared/supabase-admin.ts";
+import { getAuthenticatedUser, getSupabaseAdmin } from "../_shared/supabase-admin.ts";
 
 serve(async (req) => {
   const corsResponse = handleCors(req);
@@ -50,6 +43,31 @@ serve(async (req) => {
       );
     }
 
+    const { data: integration, error: integrationError } = await supabaseAdmin
+      .from("integrations")
+      .select("id, provider_key, connection_metadata")
+      .eq("id", integration_id)
+      .eq("organization_id", organization_id)
+      .single();
+
+    if (integrationError || !integration) {
+      return new Response(
+        JSON.stringify({ error: "Google Workspace integration not found" }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    const normalizedProviderKey = String(integration.provider_key || "")
+      .toLowerCase()
+      .replaceAll("-", "_");
+
+    if (normalizedProviderKey !== "google_workspace") {
+      return new Response(
+        JSON.stringify({ error: "This integration is not Google Workspace" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
     const clientId = Deno.env.get("GOOGLE_CLIENT_ID");
     const redirectUri = Deno.env.get("GOOGLE_REDIRECT_URI");
 
@@ -72,7 +90,12 @@ serve(async (req) => {
       .from("integrations")
       .update({
         status: "pending",
-        metadata: { oauth_state: state, initiated_at: new Date().toISOString() },
+        connection_metadata: {
+          ...(integration.connection_metadata || {}),
+          oauth_state: state,
+          initiated_at: new Date().toISOString(),
+        },
+        last_error: null,
         updated_at: new Date().toISOString(),
       })
       .eq("id", integration_id)
@@ -85,7 +108,6 @@ serve(async (req) => {
       );
     }
 
-    // Keep requested permissions aligned with the scopes approved in Google Auth Platform.
     const scopes = [
       "openid",
       "email",
