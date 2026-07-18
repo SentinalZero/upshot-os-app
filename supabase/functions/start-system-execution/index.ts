@@ -1,30 +1,15 @@
 /**
- * start-system-execution
- *
  * Trusted server-to-server entry point for automated connected-system events.
- * The caller supplies an integration ID, capability deployment ID, stable
- * provider event ID, and business payload. Organization and specialist identity
- * are derived from the validated integration and verified against the deployment.
- *
- * Deploy this function with JWT verification disabled. Authentication is handled
- * by the X-Upshot-System-Secret header.
- *
- * Secrets required:
- *   - UPSHOT_SYSTEM_TRIGGER_SECRET
- *   - N8N_WORKFLOW_TRIGGER_URL
- *   - N8N_WORKFLOW_TRIGGER_SECRET
+ * Deploy with JWT verification disabled; X-Upshot-System-Secret authenticates it.
  */
-
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { corsHeaders, handleCors } from "../_shared/cors.ts";
 import { getSupabaseAdmin } from "../_shared/supabase-admin.ts";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const ACTIVE_DEPLOYMENT_STATUSES = new Set(["active", "deployed", "ready", "running"]);
-const ACTIVE_SPECIALIST_STATUSES = new Set(["active", "deployed", "ready", "running"]);
-const ACTIVE_INTEGRATION_STATUSES = new Set(["connected"]);
+const ACTIVE_STATUSES = new Set(["active", "deployed", "ready", "running"]);
 
-function jsonResponse(body: Record<string, unknown>, status = 200) {
+function respond(body: Record<string, unknown>, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -40,34 +25,27 @@ function secretsMatch(received: string, expected: string): boolean {
   const left = encoder.encode(received);
   const right = encoder.encode(expected);
   if (left.length !== right.length) return false;
-
   let difference = 0;
-  for (let index = 0; index < left.length; index += 1) {
-    difference |= left[index] ^ right[index];
-  }
+  for (let index = 0; index < left.length; index += 1) difference |= left[index] ^ right[index];
   return difference === 0;
 }
 
 serve(async (req) => {
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
-
-  if (req.method !== "POST") {
-    return jsonResponse({ error: "Method not allowed" }, 405);
-  }
+  if (req.method !== "POST") return respond({ error: "Method not allowed" }, 405);
 
   try {
     const expectedSystemSecret = Deno.env.get("UPSHOT_SYSTEM_TRIGGER_SECRET");
     const receivedSystemSecret = req.headers.get("X-Upshot-System-Secret") || "";
-
     if (!expectedSystemSecret || !receivedSystemSecret || !secretsMatch(receivedSystemSecret, expectedSystemSecret)) {
-      return jsonResponse({ error: "Unauthorized system trigger" }, 401);
+      return respond({ error: "Unauthorized system trigger" }, 401);
     }
 
     const n8nUrl = Deno.env.get("N8N_WORKFLOW_TRIGGER_URL");
     const n8nSecret = Deno.env.get("N8N_WORKFLOW_TRIGGER_SECRET");
     if (!n8nUrl || !n8nSecret) {
-      return jsonResponse({ error: "Workflow routing is not configured on this server" }, 500);
+      return respond({ error: "Workflow routing is not configured on this server" }, 500);
     }
 
     const body = await req.json().catch(() => ({}));
@@ -84,111 +62,92 @@ serve(async (req) => {
     const inputPayload = body.input_payload ?? {};
 
     if (!UUID_PATTERN.test(integrationId)) {
-      return jsonResponse({ error: "A valid integration_id is required" }, 400);
+      return respond({ error: "A valid integration_id is required" }, 400);
     }
-
     if (!UUID_PATTERN.test(deploymentId)) {
-      return jsonResponse({ error: "A valid specialist_workflow_deployment_id is required" }, 400);
+      return respond({ error: "A valid specialist_workflow_deployment_id is required" }, 400);
     }
-
     if (!externalEventId || externalEventId.length > 512) {
-      return jsonResponse({ error: "external_event_id must contain between 1 and 512 characters" }, 400);
+      return respond({ error: "external_event_id must contain between 1 and 512 characters" }, 400);
     }
-
     if (!isJsonObject(inputPayload)) {
-      return jsonResponse({ error: "input_payload must be a JSON object" }, 400);
+      return respond({ error: "input_payload must be a JSON object" }, 400);
     }
-
     if (JSON.stringify(inputPayload).length > 100_000) {
-      return jsonResponse({ error: "input_payload is too large" }, 413);
+      return respond({ error: "input_payload is too large" }, 413);
     }
 
     const admin = getSupabaseAdmin();
-
-    // The integration is the source of tenant identity for automated work.
-    const { data: integration, error: integrationError } = await admin
+    const { data: integration } = await admin
       .from("integrations")
       .select("id, organization_id, digital_specialist_id, status, provider_key, provider_name, external_account_email")
       .eq("id", integrationId)
       .single();
-
-    if (integrationError || !integration) {
-      return jsonResponse({ error: "The source integration was not found" }, 404);
+    if (!integration) {
+      return respond({ error: "The source integration was not found" }, 404);
     }
-
-    const integrationStatus = String(integration.status || "").toLowerCase();
-    if (!ACTIVE_INTEGRATION_STATUSES.has(integrationStatus)) {
-      return jsonResponse({ error: "The source integration is not connected" }, 409);
+    if (String(integration.status || "").toLowerCase() !== "connected") {
+      return respond({ error: "The source integration is not connected" }, 409);
     }
-
     if (!integration.organization_id || !integration.digital_specialist_id) {
-      return jsonResponse({ error: "The integration is not assigned to a Digital Specialist" }, 409);
+      return respond({ error: "The integration is not assigned to a Digital Specialist" }, 409);
     }
 
     const organizationId = integration.organization_id;
-    const digitalSpecialistId = integration.digital_specialist_id;
+    const specialistId = integration.digital_specialist_id;
 
-    // The capability must belong to the same organization and specialist as the
-    // integration. A caller cannot use one customer's integration to invoke
-    // another customer's deployment.
-    const { data: deployment, error: deploymentError } = await admin
+    const { data: deployment } = await admin
       .from("specialist_workflow_deployments")
       .select("id, organization_id, specialist_id, status")
       .eq("id", deploymentId)
       .eq("organization_id", organizationId)
-      .eq("specialist_id", digitalSpecialistId)
+      .eq("specialist_id", specialistId)
       .single();
-
-    if (deploymentError || !deployment) {
-      return jsonResponse({ error: "The capability deployment does not match the source integration" }, 404);
+    if (!deployment) {
+      return respond({ error: "The capability deployment does not match the source integration" }, 404);
+    }
+    if (!ACTIVE_STATUSES.has(String(deployment.status || "").toLowerCase())) {
+      return respond({ error: "This capability is not active" }, 409);
     }
 
-    const deploymentStatus = String(deployment.status || "").toLowerCase();
-    if (!ACTIVE_DEPLOYMENT_STATUSES.has(deploymentStatus)) {
-      return jsonResponse({ error: "This capability is not active" }, 409);
-    }
-
-    const { data: specialist, error: specialistError } = await admin
+    const { data: specialist } = await admin
       .from("digital_specialists")
-      .select("id, organization_id, status, framework_lifecycle_status")
-      .eq("id", digitalSpecialistId)
+      .select("id, status, framework_lifecycle_status")
+      .eq("id", specialistId)
       .eq("organization_id", organizationId)
       .single();
-
-    if (specialistError || !specialist) {
-      return jsonResponse({ error: "The assigned Digital Specialist was not found" }, 404);
+    if (!specialist) {
+      return respond({ error: "The assigned Digital Specialist was not found" }, 404);
     }
-
     const specialistStatuses = [specialist.status, specialist.framework_lifecycle_status]
       .filter(Boolean)
       .map((value) => String(value).toLowerCase());
-    if (!specialistStatuses.some((status) => ACTIVE_SPECIALIST_STATUSES.has(status))) {
-      return jsonResponse({ error: "The assigned Digital Specialist is not active" }, 409);
+    if (!specialistStatuses.some((status) => ACTIVE_STATUSES.has(status))) {
+      return respond({ error: "The assigned Digital Specialist is not active" }, 409);
     }
 
-    // Provider event identity is the idempotency key for automated work.
-    const { data: existingExecutions, error: existingError } = await admin
+    const duplicateQuery = () => admin
       .from("workflow_executions")
-      .select("id, status, organization_id, digital_specialist_id, specialist_workflow_deployment_id")
+      .select("id, status, organization_id, specialist_id, specialist_workflow_deployment_id")
       .eq("source_integration_id", integrationId)
       .eq("specialist_workflow_deployment_id", deploymentId)
       .eq("external_event_id", externalEventId)
       .limit(1);
 
+    const { data: existingExecutions, error: existingError } = await duplicateQuery();
     if (existingError) {
-      return jsonResponse({ error: `Could not verify event idempotency: ${existingError.message}` }, 500);
+      return respond({ error: `Could not verify event idempotency: ${existingError.message}` }, 500);
     }
-
-    if (existingExecutions && existingExecutions.length > 0) {
+    if (existingExecutions?.length) {
       const existing = existingExecutions[0];
-      return jsonResponse({
+      return respond({
         execution_id: existing.id,
         organization_id: existing.organization_id,
-        digital_specialist_id: existing.digital_specialist_id,
+        digital_specialist_id: existing.specialist_id,
         specialist_workflow_deployment_id: existing.specialist_workflow_deployment_id,
         status: existing.status,
         duplicate: true,
-      }, 200);
+      });
     }
 
     const requestId = crypto.randomUUID();
@@ -206,7 +165,7 @@ serve(async (req) => {
       .from("workflow_executions")
       .insert({
         organization_id: organizationId,
-        digital_specialist_id: digitalSpecialistId,
+        specialist_id: specialistId,
         specialist_workflow_deployment_id: deploymentId,
         triggered_by_user_id: null,
         source_integration_id: integrationId,
@@ -218,43 +177,33 @@ serve(async (req) => {
         status: "running",
         created_at: now,
       })
-      .select("id, organization_id, digital_specialist_id, status, created_at")
+      .select("id, organization_id, specialist_id, status")
       .single();
 
     if (executionError || !execution) {
-      // A concurrent delivery of the same provider event may have won the unique
-      // index race. Return that execution rather than creating a duplicate.
       if (executionError?.code === "23505") {
-        const { data: duplicateExecutions } = await admin
-          .from("workflow_executions")
-          .select("id, status, organization_id, digital_specialist_id, specialist_workflow_deployment_id")
-          .eq("source_integration_id", integrationId)
-          .eq("specialist_workflow_deployment_id", deploymentId)
-          .eq("external_event_id", externalEventId)
-          .limit(1);
-
-        if (duplicateExecutions && duplicateExecutions.length > 0) {
+        const { data: duplicateExecutions } = await duplicateQuery();
+        if (duplicateExecutions?.length) {
           const duplicate = duplicateExecutions[0];
-          return jsonResponse({
+          return respond({
             execution_id: duplicate.id,
             organization_id: duplicate.organization_id,
-            digital_specialist_id: duplicate.digital_specialist_id,
+            digital_specialist_id: duplicate.specialist_id,
             specialist_workflow_deployment_id: duplicate.specialist_workflow_deployment_id,
             status: duplicate.status,
             duplicate: true,
-          }, 200);
+          });
         }
       }
-
-      return jsonResponse({ error: `Could not register system execution: ${executionError?.message || "Unknown error"}` }, 500);
+      return respond({ error: `Could not register system execution: ${executionError?.message || "Unknown error"}` }, 500);
     }
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15_000);
+    let routerResponse: Response;
 
-    let n8nResponse: Response;
     try {
-      n8nResponse = await fetch(n8nUrl, {
+      routerResponse = await fetch(n8nUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -263,7 +212,7 @@ serve(async (req) => {
         body: JSON.stringify({
           execution_id: execution.id,
           organization_id: organizationId,
-          digital_specialist_id: digitalSpecialistId,
+          digital_specialist_id: specialistId,
           specialist_workflow_deployment_id: deploymentId,
           triggered_by_user_id: null,
           source_integration_id: integrationId,
@@ -278,56 +227,41 @@ serve(async (req) => {
     } catch (error) {
       clearTimeout(timeout);
       const message = error instanceof Error ? error.message : "n8n request failed";
-      await admin
-        .from("workflow_executions")
-        .update({
-          status: "failed",
-          completed_at: new Date().toISOString(),
-          trigger_metadata: { ...baseMetadata, delivery_error: message },
-        })
-        .eq("id", execution.id)
-        .eq("organization_id", organizationId);
-
-      return jsonResponse({ execution_id: execution.id, error: "Workflow router could not be reached" }, 502);
+      await admin.from("workflow_executions").update({
+        status: "failed",
+        completed_at: new Date().toISOString(),
+        trigger_metadata: { ...baseMetadata, delivery_error: message },
+      }).eq("id", execution.id).eq("organization_id", organizationId);
+      return respond({ execution_id: execution.id, error: "Workflow router could not be reached" }, 502);
     }
 
     clearTimeout(timeout);
-
-    if (!n8nResponse.ok) {
-      const responseText = (await n8nResponse.text()).slice(0, 2_000);
-      await admin
-        .from("workflow_executions")
-        .update({
-          status: "failed",
-          completed_at: new Date().toISOString(),
-          trigger_metadata: {
-            ...baseMetadata,
-            delivery_status: n8nResponse.status,
-            delivery_error: responseText,
-          },
-        })
-        .eq("id", execution.id)
-        .eq("organization_id", organizationId);
-
-      return jsonResponse({ execution_id: execution.id, error: "Workflow router rejected the request" }, 502);
-    }
-
-    await admin
-      .from("workflow_executions")
-      .update({
+    if (!routerResponse.ok) {
+      const responseText = (await routerResponse.text()).slice(0, 2_000);
+      await admin.from("workflow_executions").update({
+        status: "failed",
+        completed_at: new Date().toISOString(),
         trigger_metadata: {
           ...baseMetadata,
-          delivered_at: new Date().toISOString(),
-          delivery_status: n8nResponse.status,
+          delivery_status: routerResponse.status,
+          delivery_error: responseText,
         },
-      })
-      .eq("id", execution.id)
-      .eq("organization_id", organizationId);
+      }).eq("id", execution.id).eq("organization_id", organizationId);
+      return respond({ execution_id: execution.id, error: "Workflow router rejected the request" }, 502);
+    }
 
-    return jsonResponse({
+    await admin.from("workflow_executions").update({
+      trigger_metadata: {
+        ...baseMetadata,
+        delivered_at: new Date().toISOString(),
+        delivery_status: routerResponse.status,
+      },
+    }).eq("id", execution.id).eq("organization_id", organizationId);
+
+    return respond({
       execution_id: execution.id,
       organization_id: organizationId,
-      digital_specialist_id: digitalSpecialistId,
+      digital_specialist_id: specialistId,
       specialist_workflow_deployment_id: deploymentId,
       triggered_by_user_id: null,
       source_integration_id: integrationId,
@@ -339,6 +273,6 @@ serve(async (req) => {
     }, 202);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Internal server error";
-    return jsonResponse({ error: message }, 500);
+    return respond({ error: message }, 500);
   }
 });
