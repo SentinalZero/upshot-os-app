@@ -22,6 +22,9 @@ jobs:
         with:
           version: latest
 
+      - name: Deploy Google OAuth start
+        run: supabase functions deploy google-oauth-start --project-ref "$SUPABASE_PROJECT_ID"
+
       - name: Deploy authenticated manual trigger
         run: supabase functions deploy start-workflow-execution --project-ref "$SUPABASE_PROJECT_ID"
 
