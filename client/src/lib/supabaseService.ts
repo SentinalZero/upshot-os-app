@@ -30,7 +30,7 @@ export interface ActivityLog {
 
 export interface WorkflowExecution {
   id: string;
-  digital_specialist_id: string | null;
+  specialist_id: string | null;
   workflow_id: string | null;
   status: string | null;
   created_at: string | null;
@@ -107,7 +107,7 @@ function buildSpecialistSummaries(
   const summaries: Record<string, SpecialistOperationalSummary> = {};
 
   for (const specialist of specialists) {
-    const specialistExecutions = executions.filter(item => item.digital_specialist_id === specialist.id);
+    const specialistExecutions = executions.filter(item => item.specialist_id === specialist.id);
     const specialistActivity = activity.filter(item => item.digital_specialist_id === specialist.id);
     const completedToday = specialistExecutions.filter(item => completedStatuses.has(String(item.status).toLowerCase())).length;
     const failedToday = specialistExecutions.filter(item => failedStatuses.has(String(item.status).toLowerCase())).length;
@@ -188,7 +188,7 @@ export async function fetchDashboardData(organizationId: string): Promise<Dashbo
       .eq("organization_id", organizationId),
     supabase
       .from("workflow_executions")
-      .select("id, digital_specialist_id, workflow_id, status, created_at, completed_at")
+      .select("id, specialist_id, workflow_id, status, created_at, completed_at")
       .eq("organization_id", organizationId)
       .gte("created_at", today)
       .order("created_at", { ascending: false }),
