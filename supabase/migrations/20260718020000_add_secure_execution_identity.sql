@@ -6,10 +6,42 @@ ALTER TABLE public.workflow_executions
   ADD COLUMN IF NOT EXISTS triggered_by_user_id uuid,
   ADD COLUMN IF NOT EXISTS specialist_workflow_deployment_id uuid,
   ADD COLUMN IF NOT EXISTS source_integration_id uuid,
-  ADD COLUMN IF NOT EXISTS trigger_source text NOT NULL DEFAULT 'manual',
-  ADD COLUMN IF NOT EXISTS request_id uuid NOT NULL DEFAULT gen_random_uuid(),
-  ADD COLUMN IF NOT EXISTS input_payload jsonb NOT NULL DEFAULT '{}'::jsonb,
-  ADD COLUMN IF NOT EXISTS trigger_metadata jsonb NOT NULL DEFAULT '{}'::jsonb;
+  ADD COLUMN IF NOT EXISTS trigger_source text,
+  ADD COLUMN IF NOT EXISTS request_id uuid,
+  ADD COLUMN IF NOT EXISTS input_payload jsonb,
+  ADD COLUMN IF NOT EXISTS trigger_metadata jsonb;
+
+-- Preserve any legacy trigger_source value that does not match the new source
+-- vocabulary, then classify the historical row as a system-triggered run.
+UPDATE public.workflow_executions
+SET
+  trigger_metadata = COALESCE(trigger_metadata, '{}'::jsonb)
+    || jsonb_build_object('legacy_trigger_source', trigger_source),
+  trigger_source = 'system'
+WHERE trigger_source IS NULL
+   OR trigger_source NOT IN ('manual', 'schedule', 'webhook', 'integration', 'system');
+
+UPDATE public.workflow_executions
+SET request_id = gen_random_uuid()
+WHERE request_id IS NULL;
+
+UPDATE public.workflow_executions
+SET input_payload = '{}'::jsonb
+WHERE input_payload IS NULL;
+
+UPDATE public.workflow_executions
+SET trigger_metadata = '{}'::jsonb
+WHERE trigger_metadata IS NULL;
+
+ALTER TABLE public.workflow_executions
+  ALTER COLUMN trigger_source SET DEFAULT 'manual',
+  ALTER COLUMN trigger_source SET NOT NULL,
+  ALTER COLUMN request_id SET DEFAULT gen_random_uuid(),
+  ALTER COLUMN request_id SET NOT NULL,
+  ALTER COLUMN input_payload SET DEFAULT '{}'::jsonb,
+  ALTER COLUMN input_payload SET NOT NULL,
+  ALTER COLUMN trigger_metadata SET DEFAULT '{}'::jsonb,
+  ALTER COLUMN trigger_metadata SET NOT NULL;
 
 DO $$
 BEGIN
