@@ -12,7 +12,9 @@ import {
 } from "@/lib/supabaseService";
 import { fetchConnectionCounts, type ConnectionCounts } from "@/lib/connectionsService";
 import { fetchWorkflowExecutionDetail, type WorkflowExecutionDetail } from "@/lib/executionDetailService";
+import { fetchSpecialistDetail, type SpecialistDetailData } from "@/lib/specialistDetailService";
 import { ExecutionDetailModal } from "@/components/ExecutionDetailModal";
+import { SpecialistDetailModal } from "@/components/SpecialistDetailModal";
 import { CommandCenterWorkforce } from "@/components/CommandCenterWorkforce";
 
 const emptyMetrics: DashboardMetrics = {
@@ -39,11 +41,16 @@ export default function InteractiveAppDashboard() {
   const [refreshing, setRefreshing] = useState(false);
   const [dataErrors, setDataErrors] = useState<string[]>([]);
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
+
   const [selectedExecution, setSelectedExecution] = useState<WorkflowExecutionDetail | null>(null);
   const [selectedActivityTitle, setSelectedActivityTitle] = useState("");
-  const [selectedSpecialistName, setSelectedSpecialistName] = useState<string | undefined>();
+  const [selectedExecutionSpecialistName, setSelectedExecutionSpecialistName] = useState<string | undefined>();
   const [executionDetailLoading, setExecutionDetailLoading] = useState(false);
   const [executionDetailError, setExecutionDetailError] = useState<string | null>(null);
+
+  const [selectedSpecialist, setSelectedSpecialist] = useState<DigitalSpecialist | null>(null);
+  const [specialistDetail, setSpecialistDetail] = useState<SpecialistDetailData | null>(null);
+  const [specialistDetailLoading, setSpecialistDetailLoading] = useState(false);
 
   useEffect(() => {
     if (!profile?.active_organization_id) return;
@@ -91,14 +98,13 @@ export default function InteractiveAppDashboard() {
     [specialists],
   );
 
-  const handleOpenActivity = async (item: ActivityLog) => {
-    const executionId = typeof item.metadata?.execution_id === "string" ? item.metadata.execution_id : "";
+  const loadExecutionDetail = async (executionId: string, title: string, specialistName?: string) => {
     const organizationId = profile?.active_organization_id;
-    if (!executionId || !organizationId) return;
+    if (!organizationId) return;
 
     setSelectedExecution(null);
-    setSelectedActivityTitle(item.title || item.message || "Workflow activity");
-    setSelectedSpecialistName(item.digital_specialist_id ? specialistNameById[item.digital_specialist_id] : undefined);
+    setSelectedActivityTitle(title);
+    setSelectedExecutionSpecialistName(specialistName);
     setExecutionDetailError(null);
     setExecutionDetailLoading(true);
 
@@ -108,12 +114,48 @@ export default function InteractiveAppDashboard() {
     setExecutionDetailError(result.error);
   };
 
+  const handleOpenActivity = async (item: ActivityLog) => {
+    const executionId = typeof item.metadata?.execution_id === "string" ? item.metadata.execution_id : "";
+    if (!executionId) return;
+
+    await loadExecutionDetail(
+      executionId,
+      item.title || item.message || "Workflow activity",
+      item.digital_specialist_id ? specialistNameById[item.digital_specialist_id] : undefined,
+    );
+  };
+
+  const handleOpenSpecialist = async (specialist: DigitalSpecialist) => {
+    const organizationId = profile?.active_organization_id;
+    if (!organizationId) return;
+
+    setSelectedSpecialist(specialist);
+    setSpecialistDetail(null);
+    setSpecialistDetailLoading(true);
+    const detail = await fetchSpecialistDetail(organizationId, specialist.id);
+    setSpecialistDetail(detail);
+    setSpecialistDetailLoading(false);
+  };
+
+  const handleOpenSpecialistJob = async (executionId: string, specialistName: string) => {
+    setSelectedSpecialist(null);
+    setSpecialistDetail(null);
+    setSpecialistDetailLoading(false);
+    await loadExecutionDetail(executionId, "Workflow execution", specialistName);
+  };
+
   const handleCloseExecutionDetail = () => {
     setSelectedExecution(null);
     setSelectedActivityTitle("");
-    setSelectedSpecialistName(undefined);
+    setSelectedExecutionSpecialistName(undefined);
     setExecutionDetailLoading(false);
     setExecutionDetailError(null);
+  };
+
+  const handleCloseSpecialistDetail = () => {
+    setSelectedSpecialist(null);
+    setSpecialistDetail(null);
+    setSpecialistDetailLoading(false);
   };
 
   const handleSignOut = async () => {
@@ -207,8 +249,20 @@ export default function InteractiveAppDashboard() {
           specialistNameById={specialistNameById}
           metrics={metrics}
           onOpenActivity={handleOpenActivity}
+          onOpenSpecialist={handleOpenSpecialist}
         />
       </main>
+
+      {selectedSpecialist && (
+        <SpecialistDetailModal
+          specialist={selectedSpecialist}
+          operationalSummary={specialistSummaries[selectedSpecialist.id]}
+          detail={specialistDetail}
+          loading={specialistDetailLoading}
+          onClose={handleCloseSpecialistDetail}
+          onOpenJob={handleOpenSpecialistJob}
+        />
+      )}
 
       {executionDetailOpen && (
         <ExecutionDetailModal
@@ -216,7 +270,7 @@ export default function InteractiveAppDashboard() {
           loading={executionDetailLoading}
           error={executionDetailError}
           activityTitle={selectedActivityTitle}
-          specialistName={selectedSpecialistName}
+          specialistName={selectedExecutionSpecialistName}
           onClose={handleCloseExecutionDetail}
         />
       )}
