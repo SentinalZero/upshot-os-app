@@ -12,7 +12,7 @@ import Signup from "./pages/Signup";
 import ForgotPassword from "./pages/ForgotPassword";
 import OnboardingOrganization from "./pages/OnboardingOrganization";
 import AppDashboard from "./pages/AppDashboard";
-import Deploy from "./pages/Deploy";
+import DeployV2 from "./pages/DeployV2";
 import Connections from "./pages/Connections";
 
 function Router() {
@@ -34,7 +34,7 @@ function Router() {
       </Route>
       <Route path={"/app/deploy"}>
         <ProtectedRoute requireOrg>
-          <Deploy />
+          <DeployV2 />
         </ProtectedRoute>
       </Route>
       <Route path={"/app/connections"}>
