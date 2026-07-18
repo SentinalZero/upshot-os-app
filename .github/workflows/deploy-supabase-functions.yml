@@ -25,6 +25,15 @@ jobs:
       - name: Deploy Google OAuth start
         run: supabase functions deploy google-oauth-start --project-ref "$SUPABASE_PROJECT_ID"
 
+      - name: Deploy Google OAuth status
+        run: supabase functions deploy google-oauth-status --project-ref "$SUPABASE_PROJECT_ID"
+
+      - name: Deploy Google OAuth disconnect
+        run: supabase functions deploy google-oauth-disconnect --project-ref "$SUPABASE_PROJECT_ID"
+
+      - name: Deploy Google OAuth callback
+        run: supabase functions deploy google-oauth-callback --project-ref "$SUPABASE_PROJECT_ID" --no-verify-jwt
+
       - name: Deploy authenticated manual trigger
         run: supabase functions deploy start-workflow-execution --project-ref "$SUPABASE_PROJECT_ID"
 
