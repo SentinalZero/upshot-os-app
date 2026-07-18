@@ -1,25 +1,14 @@
 /**
- * start-workflow-execution
- *
  * Authenticated entry point for manually starting a deployed capability.
- * The browser supplies only a deployment ID, business input, and optional
- * idempotency key. Organization, user, and specialist identity are derived and
- * verified server-side before n8n receives the request.
- *
- * Secrets required:
- *   - N8N_WORKFLOW_TRIGGER_URL
- *   - N8N_WORKFLOW_TRIGGER_SECRET
  */
-
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { corsHeaders, handleCors } from "../_shared/cors.ts";
 import { getAuthenticatedUser, getSupabaseAdmin } from "../_shared/supabase-admin.ts";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const ACTIVE_DEPLOYMENT_STATUSES = new Set(["active", "deployed", "ready", "running"]);
-const ACTIVE_SPECIALIST_STATUSES = new Set(["active", "deployed", "ready", "running"]);
+const ACTIVE_STATUSES = new Set(["active", "deployed", "ready", "running"]);
 
-function jsonResponse(body: Record<string, unknown>, status = 200) {
+function respond(body: Record<string, unknown>, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -33,10 +22,7 @@ function isJsonObject(value: unknown): value is Record<string, unknown> {
 serve(async (req) => {
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
-
-  if (req.method !== "POST") {
-    return jsonResponse({ error: "Method not allowed" }, 405);
-  }
+  if (req.method !== "POST") return respond({ error: "Method not allowed" }, 405);
 
   try {
     const user = await getAuthenticatedUser(req);
@@ -52,143 +38,128 @@ serve(async (req) => {
     const inputPayload = body.input_payload ?? {};
 
     if (!UUID_PATTERN.test(deploymentId)) {
-      return jsonResponse({ error: "A valid specialist_workflow_deployment_id is required" }, 400);
+      return respond({ error: "A valid specialist_workflow_deployment_id is required" }, 400);
     }
-
     if (!UUID_PATTERN.test(requestId)) {
-      return jsonResponse({ error: "request_id must be a valid UUID" }, 400);
+      return respond({ error: "request_id must be a valid UUID" }, 400);
     }
-
     if (!isJsonObject(inputPayload)) {
-      return jsonResponse({ error: "input_payload must be a JSON object" }, 400);
+      return respond({ error: "input_payload must be a JSON object" }, 400);
     }
-
     if (JSON.stringify(inputPayload).length > 100_000) {
-      return jsonResponse({ error: "input_payload is too large" }, 413);
+      return respond({ error: "input_payload is too large" }, 413);
     }
 
     const n8nUrl = Deno.env.get("N8N_WORKFLOW_TRIGGER_URL");
     const n8nSecret = Deno.env.get("N8N_WORKFLOW_TRIGGER_SECRET");
     if (!n8nUrl || !n8nSecret) {
-      return jsonResponse({ error: "Workflow routing is not configured on this server" }, 500);
+      return respond({ error: "Workflow routing is not configured on this server" }, 500);
     }
 
-    // The active tenant is derived from the authenticated user's profile.
-    const { data: profile, error: profileError } = await admin
+    const { data: profile } = await admin
       .from("profiles")
       .select("active_organization_id")
       .eq("id", user.id)
       .single();
-
     const organizationId = profile?.active_organization_id;
-    if (profileError || !organizationId) {
-      return jsonResponse({ error: "No active organization was found for this user" }, 403);
+    if (!organizationId) {
+      return respond({ error: "No active organization was found for this user" }, 403);
     }
 
-    // Membership is checked independently of the profile preference.
-    const { data: membership, error: membershipError } = await admin
+    const { data: membership } = await admin
       .from("organization_members")
-      .select("id, role")
+      .select("role")
       .eq("organization_id", organizationId)
       .eq("user_id", user.id)
       .single();
-
-    if (membershipError || !membership) {
-      return jsonResponse({ error: "You do not belong to the active organization" }, 403);
+    if (!membership) {
+      return respond({ error: "You do not belong to the active organization" }, 403);
     }
 
-    // The deployment determines both the organization and specialist. Neither
-    // value is accepted from the browser.
-    const { data: deployment, error: deploymentError } = await admin
+    const { data: deployment } = await admin
       .from("specialist_workflow_deployments")
       .select("id, organization_id, specialist_id, status")
       .eq("id", deploymentId)
       .eq("organization_id", organizationId)
       .single();
-
-    if (deploymentError || !deployment) {
-      return jsonResponse({ error: "Capability deployment was not found in the active organization" }, 404);
+    if (!deployment) {
+      return respond({ error: "Capability deployment was not found in the active organization" }, 404);
+    }
+    if (!ACTIVE_STATUSES.has(String(deployment.status || "").toLowerCase())) {
+      return respond({ error: "This capability is not active" }, 409);
     }
 
-    const deploymentStatus = String(deployment.status || "").toLowerCase();
-    if (!ACTIVE_DEPLOYMENT_STATUSES.has(deploymentStatus)) {
-      return jsonResponse({ error: "This capability is not active" }, 409);
-    }
-
-    const { data: specialist, error: specialistError } = await admin
+    const { data: specialist } = await admin
       .from("digital_specialists")
-      .select("id, organization_id, status, framework_lifecycle_status")
+      .select("id, status, framework_lifecycle_status")
       .eq("id", deployment.specialist_id)
       .eq("organization_id", organizationId)
       .single();
-
-    if (specialistError || !specialist) {
-      return jsonResponse({ error: "The assigned Digital Specialist was not found" }, 404);
+    if (!specialist) {
+      return respond({ error: "The assigned Digital Specialist was not found" }, 404);
     }
-
     const specialistStatuses = [specialist.status, specialist.framework_lifecycle_status]
       .filter(Boolean)
       .map((value) => String(value).toLowerCase());
-    if (!specialistStatuses.some((status) => ACTIVE_SPECIALIST_STATUSES.has(status))) {
-      return jsonResponse({ error: "The assigned Digital Specialist is not active" }, 409);
+    if (!specialistStatuses.some((status) => ACTIVE_STATUSES.has(status))) {
+      return respond({ error: "The assigned Digital Specialist is not active" }, 409);
     }
 
-    // Tenant-scoped idempotency prevents retries and double-clicks from
-    // starting the same job twice.
     const { data: existingExecutions, error: existingError } = await admin
       .from("workflow_executions")
-      .select("id, status, organization_id, digital_specialist_id, created_at")
+      .select("id, status, organization_id, specialist_id")
       .eq("organization_id", organizationId)
       .eq("request_id", requestId)
       .limit(1);
-
     if (existingError) {
-      return jsonResponse({ error: `Could not verify request idempotency: ${existingError.message}` }, 500);
+      return respond({ error: `Could not verify request idempotency: ${existingError.message}` }, 500);
     }
-
-    if (existingExecutions && existingExecutions.length > 0) {
+    if (existingExecutions?.length) {
       const existing = existingExecutions[0];
-      return jsonResponse({
+      return respond({
         execution_id: existing.id,
         organization_id: existing.organization_id,
-        digital_specialist_id: existing.digital_specialist_id,
+        digital_specialist_id: existing.specialist_id,
+        specialist_workflow_deployment_id: deployment.id,
+        request_id: requestId,
         status: existing.status,
         duplicate: true,
-      }, 200);
+      });
     }
 
     const now = new Date().toISOString();
+    const baseMetadata = {
+      initiated_at: now,
+      initiated_by: "authenticated_user",
+      organization_role: membership.role,
+    };
+
     const { data: execution, error: executionError } = await admin
       .from("workflow_executions")
       .insert({
         organization_id: organizationId,
-        digital_specialist_id: specialist.id,
+        specialist_id: specialist.id,
         specialist_workflow_deployment_id: deployment.id,
         triggered_by_user_id: user.id,
         trigger_source: "manual",
         request_id: requestId,
         input_payload: inputPayload,
-        trigger_metadata: {
-          initiated_at: now,
-          initiated_by: "authenticated_user",
-          organization_role: membership.role,
-        },
+        trigger_metadata: baseMetadata,
         status: "running",
         created_at: now,
       })
-      .select("id, organization_id, digital_specialist_id, status, created_at")
+      .select("id, organization_id, specialist_id, status")
       .single();
-
     if (executionError || !execution) {
-      return jsonResponse({ error: `Could not register workflow execution: ${executionError?.message || "Unknown error"}` }, 500);
+      return respond({ error: `Could not register workflow execution: ${executionError?.message || "Unknown error"}` }, 500);
     }
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15_000);
+    let routerResponse: Response;
 
-    let n8nResponse: Response;
     try {
-      n8nResponse = await fetch(n8nUrl, {
+      routerResponse = await fetch(n8nUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -209,62 +180,38 @@ serve(async (req) => {
     } catch (error) {
       clearTimeout(timeout);
       const message = error instanceof Error ? error.message : "n8n request failed";
-      await admin
-        .from("workflow_executions")
-        .update({
-          status: "failed",
-          completed_at: new Date().toISOString(),
-          trigger_metadata: {
-            initiated_at: now,
-            initiated_by: "authenticated_user",
-            organization_role: membership.role,
-            delivery_error: message,
-          },
-        })
-        .eq("id", execution.id)
-        .eq("organization_id", organizationId);
-
-      return jsonResponse({ execution_id: execution.id, error: "Workflow router could not be reached" }, 502);
+      await admin.from("workflow_executions").update({
+        status: "failed",
+        completed_at: new Date().toISOString(),
+        trigger_metadata: { ...baseMetadata, delivery_error: message },
+      }).eq("id", execution.id).eq("organization_id", organizationId);
+      return respond({ execution_id: execution.id, error: "Workflow router could not be reached" }, 502);
     }
 
     clearTimeout(timeout);
-
-    if (!n8nResponse.ok) {
-      const responseText = (await n8nResponse.text()).slice(0, 2_000);
-      await admin
-        .from("workflow_executions")
-        .update({
-          status: "failed",
-          completed_at: new Date().toISOString(),
-          trigger_metadata: {
-            initiated_at: now,
-            initiated_by: "authenticated_user",
-            organization_role: membership.role,
-            delivery_status: n8nResponse.status,
-            delivery_error: responseText,
-          },
-        })
-        .eq("id", execution.id)
-        .eq("organization_id", organizationId);
-
-      return jsonResponse({ execution_id: execution.id, error: "Workflow router rejected the request" }, 502);
+    if (!routerResponse.ok) {
+      const responseText = (await routerResponse.text()).slice(0, 2_000);
+      await admin.from("workflow_executions").update({
+        status: "failed",
+        completed_at: new Date().toISOString(),
+        trigger_metadata: {
+          ...baseMetadata,
+          delivery_status: routerResponse.status,
+          delivery_error: responseText,
+        },
+      }).eq("id", execution.id).eq("organization_id", organizationId);
+      return respond({ execution_id: execution.id, error: "Workflow router rejected the request" }, 502);
     }
 
-    await admin
-      .from("workflow_executions")
-      .update({
-        trigger_metadata: {
-          initiated_at: now,
-          initiated_by: "authenticated_user",
-          organization_role: membership.role,
-          delivered_at: new Date().toISOString(),
-          delivery_status: n8nResponse.status,
-        },
-      })
-      .eq("id", execution.id)
-      .eq("organization_id", organizationId);
+    await admin.from("workflow_executions").update({
+      trigger_metadata: {
+        ...baseMetadata,
+        delivered_at: new Date().toISOString(),
+        delivery_status: routerResponse.status,
+      },
+    }).eq("id", execution.id).eq("organization_id", organizationId);
 
-    return jsonResponse({
+    return respond({
       execution_id: execution.id,
       organization_id: organizationId,
       digital_specialist_id: specialist.id,
@@ -277,6 +224,6 @@ serve(async (req) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Internal server error";
     const status = message.includes("Unauthorized") || message.includes("Authorization") ? 401 : 500;
-    return jsonResponse({ error: message }, status);
+    return respond({ error: message }, status);
   }
 });
