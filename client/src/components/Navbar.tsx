@@ -35,7 +35,7 @@ export function Navbar() {
     <header
       className={`fixed top-0 left-0 right-0 z-50 transition-all duration-200 ${
         scrolled
-          ? "bg-background/80 backdrop-blur-xl border-b border-subtle"
+          ? "bg-background/95 border-b border-subtle shadow-[0_8px_24px_rgba(0,0,0,0.28)]"
           : "bg-transparent"
       }`}
     >
@@ -110,7 +110,7 @@ export function Navbar() {
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.2 }}
-          className="md:hidden bg-background/95 backdrop-blur-xl border-b border-subtle px-6 pb-6"
+          className="md:hidden bg-background border-b border-subtle px-6 pb-6"
         >
           <nav className="flex flex-col gap-4 pt-2">
             {navLinks.map((link) => (
