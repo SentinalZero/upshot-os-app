@@ -1,18 +1,8 @@
 /**
  * google-oauth-disconnect
  *
- * Disconnects a Google Workspace integration:
- * 1. Decrypts the stored access token server-side
- * 2. Revokes the token with Google
- * 3. Deletes the encrypted secrets from integration_secrets
- * 4. Updates the integration status to "disconnected"
- *
- * Never sends decrypted tokens or secrets to the browser.
- *
- * Secrets required:
- *   - TOKEN_ENCRYPTION_KEY (for decryption)
- *   - SUPABASE_URL
- *   - SUPABASE_SERVICE_ROLE_KEY
+ * Revokes Google access, removes encrypted credentials, and resets the public
+ * integration record without exposing token values to the browser.
  */
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
@@ -26,18 +16,16 @@ serve(async (req) => {
 
   try {
     const user = await getAuthenticatedUser(req);
-
     const body = await req.json();
     const { integration_id, organization_id } = body;
 
     if (!integration_id || !organization_id) {
       return new Response(
         JSON.stringify({ error: "integration_id and organization_id are required" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
-    // Verify user belongs to the organization
     const supabaseAdmin = getSupabaseAdmin();
     const { data: membership } = await supabaseAdmin
       .from("organization_members")
@@ -49,51 +37,55 @@ serve(async (req) => {
     if (!membership) {
       return new Response(
         JSON.stringify({ error: "Forbidden" }),
-        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
-    // Fetch the encrypted secrets
     const { data: secrets, error: secretsError } = await supabaseAdmin
       .from("integration_secrets")
       .select("encrypted_access_token")
       .eq("integration_id", integration_id)
-      .single();
+      .eq("organization_id", organization_id)
+      .maybeSingle();
 
     if (!secretsError && secrets?.encrypted_access_token) {
-      // Decrypt the access token server-side to revoke it with Google
       try {
         const accessToken = await decryptToken(secrets.encrypted_access_token);
-
-        // Revoke the token with Google
-        await fetch(`https://oauth2.googleapis.com/revoke?token=${accessToken}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        });
+        await fetch(
+          `https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(accessToken)}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          },
+        );
       } catch (decryptErr) {
-        // If decryption fails, still proceed with cleanup
         console.error("[google-oauth-disconnect] Failed to decrypt/revoke token:", decryptErr);
       }
     }
 
-    // Delete the secrets record
     await supabaseAdmin
       .from("integration_secrets")
       .delete()
-      .eq("integration_id", integration_id);
+      .eq("integration_id", integration_id)
+      .eq("organization_id", organization_id);
 
-    // Update integration status to "disconnected"
+    const now = new Date().toISOString();
     const { error: updateError } = await supabaseAdmin
       .from("integrations")
       .update({
         status: "disconnected",
+        external_account_id: null,
         external_account_email: null,
         external_account_name: null,
         connected_at: null,
+        expires_at: null,
+        disconnected_at: now,
         last_verified_at: null,
-        granted_scopes: null,
-        metadata: {},
-        updated_at: new Date().toISOString(),
+        last_error: null,
+        secret_reference: null,
+        granted_scopes: [],
+        connection_metadata: {},
+        updated_at: now,
       })
       .eq("id", integration_id)
       .eq("organization_id", organization_id);
@@ -102,11 +94,10 @@ serve(async (req) => {
       console.error("[google-oauth-disconnect] Failed to update integration:", updateError);
       return new Response(
         JSON.stringify({ error: "Failed to update integration status" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
-    // Log activity
     await supabaseAdmin.from("activity_logs").insert({
       organization_id,
       user_id: user.id,
@@ -119,15 +110,14 @@ serve(async (req) => {
 
     return new Response(
       JSON.stringify({ success: true, status: "disconnected" }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : "Internal server error";
     const status = message.includes("Unauthorized") ? 401 : 500;
     return new Response(
       JSON.stringify({ error: message }),
-      { status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
 });
-
