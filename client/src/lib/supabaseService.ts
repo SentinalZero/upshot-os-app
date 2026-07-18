@@ -28,6 +28,27 @@ export interface ActivityLog {
   created_at: string | null;
 }
 
+export interface WorkflowExecution {
+  id: string;
+  digital_specialist_id: string | null;
+  workflow_id: string | null;
+  status: string | null;
+  created_at: string | null;
+  completed_at: string | null;
+}
+
+export type WorkforceState = "working" | "idle" | "needs_review" | "failed" | "offline";
+
+export interface SpecialistOperationalSummary {
+  specialistId: string;
+  state: WorkforceState;
+  completedToday: number;
+  failedToday: number;
+  needsReview: number;
+  currentJob: string;
+  lastActivityAt: string | null;
+}
+
 export interface DashboardMetrics {
   totalSpecialists: number;
   activeSpecialists: number;
@@ -42,10 +63,15 @@ export interface DashboardMetrics {
 export interface DashboardData {
   specialists: DigitalSpecialist[];
   workflowCounts: Record<string, number>;
+  specialistSummaries: Record<string, SpecialistOperationalSummary>;
   recentActivity: ActivityLog[];
   metrics: DashboardMetrics;
   errors: string[];
 }
+
+const completedStatuses = new Set(["successful", "success", "completed"]);
+const failedStatuses = new Set(["failed", "error"]);
+const workingStatuses = new Set(["running", "processing", "in_progress", "queued"]);
 
 function isActiveSpecialist(specialist: DigitalSpecialist): boolean {
   const statuses = [specialist.status, specialist.framework_lifecycle_status]
@@ -64,6 +90,50 @@ function startOfLocalDayIso(): string {
   const now = new Date();
   const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   return start.toISOString();
+}
+
+function getActivityLabel(activity?: ActivityLog): string {
+  if (!activity) return "Ready for work";
+  const workflowName = activity.metadata?.workflow_name;
+  if (typeof workflowName === "string" && workflowName.trim()) return workflowName;
+  return activity.title || activity.message || activity.description || activity.activity_type || activity.event_type || "Operational work";
+}
+
+function buildSpecialistSummaries(
+  specialists: DigitalSpecialist[],
+  executions: WorkflowExecution[],
+  activity: ActivityLog[],
+): Record<string, SpecialistOperationalSummary> {
+  const summaries: Record<string, SpecialistOperationalSummary> = {};
+
+  for (const specialist of specialists) {
+    const specialistExecutions = executions.filter(item => item.digital_specialist_id === specialist.id);
+    const specialistActivity = activity.filter(item => item.digital_specialist_id === specialist.id);
+    const completedToday = specialistExecutions.filter(item => completedStatuses.has(String(item.status).toLowerCase())).length;
+    const failedToday = specialistExecutions.filter(item => failedStatuses.has(String(item.status).toLowerCase())).length;
+    const reviewItems = specialistActivity.filter(requiresReview);
+    const latestExecution = specialistExecutions[0];
+    const latestActivity = specialistActivity[0];
+    const latestStatus = String(latestExecution?.status || "").toLowerCase();
+
+    let state: WorkforceState = "offline";
+    if (reviewItems.length > 0) state = "needs_review";
+    else if (workingStatuses.has(latestStatus)) state = "working";
+    else if (failedStatuses.has(latestStatus)) state = "failed";
+    else if (isActiveSpecialist(specialist)) state = "idle";
+
+    summaries[specialist.id] = {
+      specialistId: specialist.id,
+      state,
+      completedToday,
+      failedToday,
+      needsReview: reviewItems.length,
+      currentJob: state === "working" ? getActivityLabel(latestActivity) : state === "needs_review" ? "Waiting for human review" : getActivityLabel(latestActivity),
+      lastActivityAt: latestActivity?.created_at || latestExecution?.completed_at || latestExecution?.created_at || specialist.deployed_at,
+    };
+  }
+
+  return summaries;
 }
 
 export async function fetchSpecialists(organizationId: string): Promise<DigitalSpecialist[]> {
@@ -85,6 +155,7 @@ export async function fetchDashboardData(organizationId: string): Promise<Dashbo
   const empty: DashboardData = {
     specialists: [],
     workflowCounts: {},
+    specialistSummaries: {},
     recentActivity: [],
     metrics: {
       totalSpecialists: 0,
@@ -117,15 +188,16 @@ export async function fetchDashboardData(organizationId: string): Promise<Dashbo
       .eq("organization_id", organizationId),
     supabase
       .from("workflow_executions")
-      .select("id, status")
+      .select("id, digital_specialist_id, workflow_id, status, created_at, completed_at")
       .eq("organization_id", organizationId)
-      .gte("created_at", today),
+      .gte("created_at", today)
+      .order("created_at", { ascending: false }),
     supabase
       .from("activity_logs")
       .select("id, organization_id, digital_specialist_id, event_type, activity_type, title, description, message, severity, metadata, created_at")
       .eq("organization_id", organizationId)
       .order("created_at", { ascending: false })
-      .limit(20),
+      .limit(50),
   ]);
 
   const errors: string[] = [];
@@ -136,7 +208,7 @@ export async function fetchDashboardData(organizationId: string): Promise<Dashbo
 
   const specialists = (specialistsResult.data || []) as DigitalSpecialist[];
   const deployments = deploymentsResult.data || [];
-  const executions = executionsResult.data || [];
+  const executions = (executionsResult.data || []) as WorkflowExecution[];
   const recentActivity = (activityResult.data || []) as ActivityLog[];
 
   const workflowCounts: Record<string, number> = {};
@@ -146,15 +218,14 @@ export async function fetchDashboardData(organizationId: string): Promise<Dashbo
     }
   }
 
-  const successfulStatuses = new Set(["successful", "success", "completed"]);
-  const failedStatuses = new Set(["failed", "error"]);
-  const successfulExecutionsToday = executions.filter(item => successfulStatuses.has(String(item.status).toLowerCase())).length;
+  const successfulExecutionsToday = executions.filter(item => completedStatuses.has(String(item.status).toLowerCase())).length;
   const failedExecutionsToday = executions.filter(item => failedStatuses.has(String(item.status).toLowerCase())).length;
   const executionsToday = executions.length;
 
   return {
     specialists,
     workflowCounts,
+    specialistSummaries: buildSpecialistSummaries(specialists, executions, recentActivity),
     recentActivity,
     metrics: {
       totalSpecialists: specialists.length,
@@ -167,6 +238,22 @@ export async function fetchDashboardData(organizationId: string): Promise<Dashbo
       needsHumanReview: recentActivity.filter(requiresReview).length,
     },
     errors,
+  };
+}
+
+export function subscribeToCommandCenter(organizationId: string, onChange: () => void): () => void {
+  if (!supabase) return () => undefined;
+
+  const channel = supabase
+    .channel(`command-center:${organizationId}`)
+    .on("postgres_changes", { event: "*", schema: "public", table: "digital_specialists", filter: `organization_id=eq.${organizationId}` }, () => onChange())
+    .on("postgres_changes", { event: "*", schema: "public", table: "specialist_workflow_deployments", filter: `organization_id=eq.${organizationId}` }, () => onChange())
+    .on("postgres_changes", { event: "*", schema: "public", table: "workflow_executions", filter: `organization_id=eq.${organizationId}` }, () => onChange())
+    .on("postgres_changes", { event: "*", schema: "public", table: "activity_logs", filter: `organization_id=eq.${organizationId}` }, () => onChange())
+    .subscribe();
+
+  return () => {
+    void supabase.removeChannel(channel);
   };
 }
 
