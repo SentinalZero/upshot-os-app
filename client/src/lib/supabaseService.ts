@@ -31,7 +31,6 @@ export interface ActivityLog {
 export interface WorkflowExecution {
   id: string;
   specialist_id: string | null;
-  workflow_id: string | null;
   status: string | null;
   created_at: string | null;
   completed_at: string | null;
@@ -188,7 +187,7 @@ export async function fetchDashboardData(organizationId: string): Promise<Dashbo
       .eq("organization_id", organizationId),
     supabase
       .from("workflow_executions")
-      .select("id, specialist_id, workflow_id, status, created_at, completed_at")
+      .select("id, specialist_id, status, created_at, completed_at")
       .eq("organization_id", organizationId)
       .gte("created_at", today)
       .order("created_at", { ascending: false }),
