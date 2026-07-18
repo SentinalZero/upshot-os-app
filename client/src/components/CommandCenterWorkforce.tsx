@@ -17,6 +17,7 @@ interface CommandCenterWorkforceProps {
   specialistNameById: Record<string, string>;
   metrics: DashboardMetrics;
   onOpenActivity: (item: ActivityLog) => void;
+  onOpenSpecialist: (specialist: DigitalSpecialist) => void;
 }
 
 export function CommandCenterWorkforce({
@@ -28,6 +29,7 @@ export function CommandCenterWorkforce({
   specialistNameById,
   metrics,
   onOpenActivity,
+  onOpenSpecialist,
 }: CommandCenterWorkforceProps) {
   if (loading) {
     return (
@@ -62,6 +64,7 @@ export function CommandCenterWorkforce({
                 specialist={specialist}
                 summary={specialistSummaries[specialist.id]}
                 capabilityCount={workflowCounts[specialist.id] || 0}
+                onOpen={onOpenSpecialist}
               />
             ))}
           </div>
@@ -117,16 +120,22 @@ function SpecialistCard({
   specialist,
   summary,
   capabilityCount,
+  onOpen,
 }: {
   specialist: DigitalSpecialist;
   summary?: SpecialistOperationalSummary;
   capabilityCount: number;
+  onOpen: (specialist: DigitalSpecialist) => void;
 }) {
   const state = summary?.state || "offline";
   const status = workforceStateConfig[state];
 
   return (
-    <article className="rounded-xl border border-subtle bg-background/35 p-5 transition-all hover:border-foreground/15 hover:bg-background/55">
+    <button
+      type="button"
+      onClick={() => onOpen(specialist)}
+      className="group w-full rounded-xl border border-subtle bg-background/35 p-5 text-left transition-all hover:border-foreground/20 hover:bg-background/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="font-display text-lg font-semibold truncate">{specialist.name}</p>
@@ -151,9 +160,12 @@ function SpecialistCard({
 
       <div className="flex items-center justify-between mt-4 pt-4 border-t border-subtle text-[10px] text-muted-foreground">
         <span>{specialist.industry_name || "General Operations"}</span>
-        <span>{formatRelativeTime(summary?.lastActivityAt)}</span>
+        <span className="flex items-center gap-1.5">
+          View profile
+          <ChevronRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5 group-hover:text-gold" />
+        </span>
       </div>
-    </article>
+    </button>
   );
 }
 
@@ -223,19 +235,6 @@ function CardMetric({ label, value, alert }: { label: string; value: number; ale
       <p className="text-[9px] text-muted-foreground mt-0.5">{label}</p>
     </div>
   );
-}
-
-function formatRelativeTime(value?: string | null): string {
-  if (!value) return "No activity yet";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Activity recorded";
-  const seconds = Math.max(0, Math.floor((Date.now() - date.getTime()) / 1000));
-  if (seconds < 60) return "Just now";
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
 function formatActivityTime(value?: string | null): string {
