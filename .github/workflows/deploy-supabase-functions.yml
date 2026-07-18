@@ -39,3 +39,6 @@ jobs:
 
       - name: Deploy automated system trigger
         run: supabase functions deploy start-system-execution --project-ref "$SUPABASE_PROJECT_ID" --no-verify-jwt
+
+      - name: Deploy workflow completion callback
+        run: supabase functions deploy complete-workflow-execution --project-ref "$SUPABASE_PROJECT_ID" --no-verify-jwt
