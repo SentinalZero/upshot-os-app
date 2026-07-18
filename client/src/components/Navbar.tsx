@@ -33,10 +33,8 @@ export function Navbar() {
 
   return (
     <header
-      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-200 ${
-        scrolled
-          ? "bg-background/95 border-b border-subtle shadow-[0_8px_24px_rgba(0,0,0,0.28)]"
-          : "bg-transparent"
+      className={`fixed top-0 left-0 right-0 z-50 isolate overflow-hidden bg-background border-b border-subtle transition-shadow duration-200 ${
+        scrolled ? "shadow-[0_8px_24px_rgba(0,0,0,0.28)]" : ""
       }`}
     >
       <div className="container flex items-center justify-between h-[76px]">
@@ -64,8 +62,13 @@ export function Navbar() {
         </nav>
 
         {/* CTA / Auth Buttons */}
-        <div className="hidden md:flex items-center gap-3">
-          {!loading && user ? (
+        <div className="hidden md:flex items-center gap-3 min-w-[230px] justify-end">
+          {loading ? (
+            <div
+              className="h-10 w-[190px] rounded-lg border border-subtle bg-white/[0.025]"
+              aria-hidden="true"
+            />
+          ) : user ? (
             <Link
               href="/app"
               className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg font-semibold text-sm text-[#1a1000] transition-all duration-150 hover:shadow-[0_0_20px_oklch(0.65_0.14_75/30%)] active:scale-[0.97]"
@@ -124,7 +127,9 @@ export function Navbar() {
               </a>
             ))}
             <div className="border-t border-subtle pt-4 mt-2 flex flex-col gap-3">
-              {!loading && user ? (
+              {loading ? (
+                <div className="h-11 rounded-lg border border-subtle bg-white/[0.025]" aria-hidden="true" />
+              ) : user ? (
                 <Link
                   href="/app"
                   onClick={() => setMobileOpen(false)}
@@ -159,4 +164,3 @@ export function Navbar() {
     </header>
   );
 }
-
