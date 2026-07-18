@@ -41,14 +41,12 @@ export function HeroSection() {
 
   return (
     <section id="top" className="relative min-h-screen flex items-center pt-[76px]">
-      {/* Background */}
-      <div className="absolute inset-0 z-0">
-        <img
-          src="/assets/hero-abstract.jpg"
-          alt=""
-          className="w-full h-full object-cover opacity-30"
-        />
-        <div className="absolute inset-0 bg-gradient-to-b from-background/50 via-background/80 to-background" />
+      {/* Clean abstract background. The previous image contained baked-in UI text. */}
+      <div className="absolute inset-0 z-0 overflow-hidden bg-background">
+        <div className="absolute -top-44 -left-28 h-[560px] w-[560px] rounded-full bg-[oklch(0.65_0.14_75/8%)] blur-[130px]" />
+        <div className="absolute top-[18%] right-[2%] h-[460px] w-[460px] rounded-full bg-[oklch(0.55_0.08_230/4%)] blur-[140px]" />
+        <div className="absolute bottom-[-20%] left-[35%] h-[520px] w-[520px] rounded-full bg-[oklch(0.65_0.14_75/4%)] blur-[150px]" />
+        <div className="absolute inset-0 bg-gradient-to-b from-background/80 via-background/95 to-background" />
       </div>
 
       {/* Grid overlay */}
