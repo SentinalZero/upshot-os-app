@@ -1,0 +1,107 @@
+{
+  "name": "Upshot Google Calendar Intake",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -360,
+        -80
+      ],
+      "id": "faad6ab9-46e1-49b3-9a4c-93ac54a961da",
+      "name": "Test Calendar Intake"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -360,
+        100
+      ],
+      "id": "bb02f2ad-78ae-4e02-a68b-729cfb22e984",
+      "name": "Every 5 Minutes"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ocfjmrnftggmaqyyhzmf.supabase.co/functions/v1/poll-google-calendar-events",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "{\n  \"integration_id\": \"7268fdd8-6f03-4dea-bb1b-15bea0bb9111\",\n  \"specialist_workflow_deployment_id\": \"754a7dcd-fa29-46e7-82cf-636216487bfb\",\n  \"lookback_minutes\": 30,\n  \"include_solo_events\": false,\n  \"dry_run\": true\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -60,
+        10
+      ],
+      "id": "b44b3501-8498-466d-95db-0c6f6a80b98d",
+      "name": "Poll Google Calendar"
+    },
+    {
+      "parameters": {
+        "content": "## Google Calendar Intake\n\n1. Open **Poll Google Calendar**\n2. Create a **Header Auth** credential\n3. Header name: `X-Upshot-System-Secret`\n4. Value: the same private value stored in Supabase as `UPSHOT_SYSTEM_TRIGGER_SECRET`\n5. Save the credential\n6. Run **Test Calendar Intake** first\n7. The workflow starts in `dry_run: true` so it cannot create jobs\n8. After the dry run succeeds, change `dry_run` to `false` and activate the workflow\n\nThe 30 minute lookback overlaps every five minute poll. Existing execution idempotency prevents the same Google event from creating duplicate jobs.",
+        "height": 390,
+        "width": 560,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -410,
+        -500
+      ],
+      "id": "d037436d-847c-4db6-a647-3ddcf70df404",
+      "name": "Setup Instructions"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Test Calendar Intake": {
+      "main": [
+        [
+          {
+            "node": "Poll Google Calendar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Every 5 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Poll Google Calendar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "881db7b5-4080-4f57-9156-e15c22d750f7",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}
