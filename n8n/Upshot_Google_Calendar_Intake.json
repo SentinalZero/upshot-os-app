@@ -35,13 +35,13 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://ocfjmrnftggmaqyyhzmf.supabase.co/functions/v1/poll-google-calendar-events",
+        "url": "https://ocfjmrnftggmaqyyhzmf.supabase.co/functions/v1/poll-all-google-calendar-events",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "contentType": "raw",
         "rawContentType": "application/json",
-        "body": "{\n  \"integration_id\": \"7268fdd8-6f03-4dea-bb1b-15bea0bb9111\",\n  \"specialist_workflow_deployment_id\": \"754a7dcd-fa29-46e7-82cf-636216487bfb\",\n  \"lookback_minutes\": 30,\n  \"include_solo_events\": false,\n  \"dry_run\": true\n}",
+        "body": "{\n  \"lookback_minutes\": 30,\n  \"batch_size\": 100,\n  \"include_solo_events\": false,\n  \"dry_run\": true\n}",
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
@@ -51,13 +51,13 @@
         10
       ],
       "id": "b44b3501-8498-466d-95db-0c6f6a80b98d",
-      "name": "Poll Google Calendar"
+      "name": "Poll All Google Calendars"
     },
     {
       "parameters": {
-        "content": "## Google Calendar Intake\n\n1. Open **Poll Google Calendar**\n2. Create a **Header Auth** credential\n3. Header name: `X-Upshot-System-Secret`\n4. Value: the same private value stored in Supabase as `UPSHOT_SYSTEM_TRIGGER_SECRET`\n5. Save the credential\n6. Run **Test Calendar Intake** first\n7. The workflow starts in `dry_run: true` so it cannot create jobs\n8. After the dry run succeeds, change `dry_run` to `false` and activate the workflow\n\nThe 30 minute lookback overlaps every five minute poll. Existing execution idempotency prevents the same Google event from creating duplicate jobs.",
-        "height": 390,
-        "width": 560,
+        "content": "## Multi Tenant Google Calendar Intake\n\n1. Open **Poll All Google Calendars**\n2. Select the Header Auth credential using `X-Upshot-System-Secret`\n3. Run **Test Calendar Intake** first\n4. The workflow starts in `dry_run: true` so it cannot create jobs\n5. Confirm every expected integration is discovered and processed\n6. Change `dry_run` to `false` and activate the workflow\n\nNo customer IDs are stored in n8n. Supabase discovers each connected Google integration and its active Meeting Summary deployment. Each tenant is processed independently, and existing execution idempotency prevents duplicate jobs.",
+        "height": 420,
+        "width": 580,
         "color": 5
       },
       "type": "n8n-nodes-base.stickyNote",
@@ -76,7 +76,7 @@
       "main": [
         [
           {
-            "node": "Poll Google Calendar",
+            "node": "Poll All Google Calendars",
             "type": "main",
             "index": 0
           }
@@ -87,7 +87,7 @@
       "main": [
         [
           {
-            "node": "Poll Google Calendar",
+            "node": "Poll All Google Calendars",
             "type": "main",
             "index": 0
           }
