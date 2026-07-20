@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { AlertTriangle, CheckCircle2, Clock3, ListChecks, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock3, ListChecks, MailCheck, X } from "lucide-react";
 import type { WorkflowExecutionDetail } from "@/lib/executionDetailService";
 
 interface ExecutionDetailModalProps {
@@ -36,11 +36,20 @@ export function ExecutionDetailModal({
 
   const output = detail?.output_summary || {};
   const input = detail?.input_payload || {};
+  const metadata = detail?.trigger_metadata || {};
   const keyPoints = stringList(output.key_points);
   const actionItems = stringList(output.action_items);
   const meetingTitle = stringValue(output.meeting_title) || stringValue(input.title) || activityTitle;
   const isSuccessful = detail?.status?.toLowerCase() === "successful";
   const isFailed = detail?.status?.toLowerCase() === "failed";
+  const gmailDraft = objectValue(output.gmail_draft);
+  const gmailRecipients = stringList(gmailDraft.recipients).length > 0
+    ? stringList(gmailDraft.recipients)
+    : stringList(metadata.gmail_draft_recipients);
+  const gmailSubject = stringValue(gmailDraft.subject) || stringValue(metadata.gmail_draft_subject);
+  const gmailDraftId = stringValue(gmailDraft.draft_id) || stringValue(metadata.gmail_draft_id);
+  const gmailCreatedAt = stringValue(metadata.gmail_draft_created_at);
+  const hasGmailDraft = Boolean(gmailDraftId || gmailSubject || gmailRecipients.length > 0);
 
   return (
     <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/70 p-0 backdrop-blur-sm sm:items-center sm:p-6" onMouseDown={onClose}>
@@ -94,6 +103,7 @@ export function ExecutionDetailModal({
                 <StatusBadge status={detail.status} successful={isSuccessful} failed={isFailed} />
                 {detail.trigger_source && <DetailPill label={detail.trigger_source.replaceAll("_", " ")} />}
                 {detail.n8n_execution_id && <DetailPill label="n8n verified" />}
+                {hasGmailDraft && <DetailPill label="Gmail draft created" />}
               </div>
 
               <section className="rounded-xl border border-subtle bg-surface p-5">
@@ -108,6 +118,35 @@ export function ExecutionDetailModal({
                   <OutputList title="Key Points" items={keyPoints} icon="check" />
                   <OutputList title="Action Items" items={actionItems} icon="action" />
                 </div>
+              )}
+
+              {hasGmailDraft && (
+                <section className="rounded-xl border border-[oklch(0.75_0.18_155/30%)] bg-[oklch(0.75_0.18_155/7%)] p-5">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[oklch(0.75_0.18_155/15%)] text-[oklch(0.75_0.18_155)]">
+                      <MailCheck className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <p className="text-[10px] font-mono uppercase tracking-wider text-[oklch(0.75_0.18_155)]">Customer Follow Up</p>
+                          <h3 className="mt-1 text-sm font-semibold">Draft created in Gmail</h3>
+                        </div>
+                        <span className="rounded-full bg-[oklch(0.75_0.18_155/15%)] px-2.5 py-1 text-[9px] font-mono font-semibold uppercase tracking-wider text-[oklch(0.75_0.18_155)]">
+                          Ready for review
+                        </span>
+                      </div>
+                      <dl className="mt-4 grid grid-cols-1 gap-4 text-xs sm:grid-cols-2">
+                        <DetailRow label="Recipients" value={gmailRecipients.length > 0 ? gmailRecipients.join(", ") : "Not recorded"} />
+                        <DetailRow label="Prepared" value={formatDateTime(gmailCreatedAt || detail.completed_at)} />
+                        <div className="min-w-0 sm:col-span-2">
+                          <dt className="text-[10px] uppercase tracking-wider text-muted-foreground">Subject</dt>
+                          <dd className="mt-1 break-words text-foreground/85">{gmailSubject || "Follow up email"}</dd>
+                        </div>
+                      </dl>
+                    </div>
+                  </div>
+                </section>
               )}
 
               <section className="rounded-xl border border-subtle bg-surface p-5">
@@ -176,6 +215,10 @@ function DetailRow({ label, value, mono }: { label: string; value: string; mono?
       <dd className={`mt-1 break-words capitalize text-foreground/85 ${mono ? "font-mono text-[10px] normal-case" : ""}`}>{value}</dd>
     </div>
   );
+}
+
+function objectValue(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
 
 function stringList(value: unknown): string[] {
