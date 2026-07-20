@@ -14,6 +14,7 @@ import OnboardingOrganization from "./pages/OnboardingOrganization";
 import AppDashboard from "./pages/AppDashboard";
 import DeployV2 from "./pages/DeployV2";
 import Connections from "./pages/Connections";
+import AccountSettings from "./pages/AccountSettings";
 
 function Router() {
   return (
@@ -40,6 +41,21 @@ function Router() {
       <Route path={"/app/connections"}>
         <ProtectedRoute requireOrg>
           <Connections />
+        </ProtectedRoute>
+      </Route>
+      <Route path={"/app/settings/profile"}>
+        <ProtectedRoute requireOrg>
+          <AccountSettings />
+        </ProtectedRoute>
+      </Route>
+      <Route path={"/app/settings/team"}>
+        <ProtectedRoute requireOrg>
+          <AccountSettings />
+        </ProtectedRoute>
+      </Route>
+      <Route path={"/app/settings/organization"}>
+        <ProtectedRoute requireOrg>
+          <AccountSettings />
         </ProtectedRoute>
       </Route>
       <Route path={"/404"} component={NotFound} />
