@@ -34,6 +34,9 @@ jobs:
       - name: Deploy Google OAuth callback
         run: supabase functions deploy google-oauth-callback --project-ref "$SUPABASE_PROJECT_ID" --no-verify-jwt
 
+      - name: Deploy default workspace provisioner
+        run: supabase functions deploy provision-default-workspace --project-ref "$SUPABASE_PROJECT_ID"
+
       - name: Deploy authenticated manual trigger
         run: supabase functions deploy start-workflow-execution --project-ref "$SUPABASE_PROJECT_ID"
 
