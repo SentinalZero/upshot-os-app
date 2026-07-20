@@ -101,7 +101,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         setState(prev => ({ ...prev, user: session.user, session }));
@@ -111,7 +110,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     });
 
-    // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setState(prev => ({ ...prev, user: session?.user || null, session }));
       if (session?.user) {
@@ -134,7 +132,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
     });
     if (error) return { error: error.message, needsConfirmation: false };
-    // If session is null, email confirmation is required
     const needsConfirmation = !data.session;
     return { error: null, needsConfirmation };
   };
@@ -168,10 +165,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       organization_slug: slug,
     });
     if (error) return { error: error.message };
-    // Refresh profile to get active_organization_id
-    if (state.user) {
+
+    if (!state.user) return { error: "Organization created, but the signed-in user could not be resolved." };
+
+    const profile = await fetchProfile(state.user.id);
+    const organizationId = profile?.active_organization_id;
+    if (!organizationId) {
       await loadUserData(state.user);
+      return { error: "Organization created, but workspace provisioning could not determine the active organization." };
     }
+
+    const { error: provisionError } = await supabase.functions.invoke("provision-default-workspace", {
+      body: { organization_id: organizationId },
+    });
+
+    await loadUserData(state.user);
+
+    if (provisionError) {
+      return {
+        error: `Organization created, but default automation setup needs attention: ${provisionError.message}`,
+      };
+    }
+
     return { error: null };
   };
 
