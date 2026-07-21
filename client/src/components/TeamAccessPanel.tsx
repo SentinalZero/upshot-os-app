@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { MailPlus, RefreshCw, ShieldCheck, UserRound, XCircle } from "lucide-react";
-import { fetchTeamAccess, inviteTeamMember, revokeTeamInvitation, updateTeamMemberRole, type TeamAccessSnapshot } from "@/lib/teamAccessService";
+import { MailPlus, RefreshCw, ShieldCheck, Trash2, UserRound, XCircle } from "lucide-react";
+import { fetchTeamAccess, inviteTeamMember, removeTeamMember, revokeTeamInvitation, updateTeamMemberRole, type TeamAccessSnapshot } from "@/lib/teamAccessService";
 
 export function TeamAccessPanel({ organizationId }: { organizationId: string }) {
   const [snapshot, setSnapshot] = useState<TeamAccessSnapshot | null>(null);
@@ -10,6 +10,7 @@ export function TeamAccessPanel({ organizationId }: { organizationId: string }) 
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<"admin" | "member">("member");
   const [pendingRole, setPendingRole] = useState<{ userId: string; email: string; currentRole: string; nextRole: "admin" | "member" } | null>(null);
+  const [pendingRemoval, setPendingRemoval] = useState<{ userId: string; email: string; role: string } | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -64,6 +65,20 @@ export function TeamAccessPanel({ organizationId }: { organizationId: string }) 
     await load();
   };
 
+  const removeMember = async () => {
+    if (!pendingRemoval || working) return;
+    setWorking(true);
+    setError(null);
+    const result = await removeTeamMember(organizationId, pendingRemoval.userId);
+    setWorking(false);
+    if (!result.success) {
+      setError(result.error || "Workspace access could not be removed.");
+      return;
+    }
+    setPendingRemoval(null);
+    await load();
+  };
+
   if (loading) return <div className="mt-6 flex min-h-40 items-center justify-center rounded-xl border border-subtle bg-background/35"><RefreshCw className="h-5 w-5 animate-spin text-gold" /></div>;
 
   return (
@@ -88,19 +103,23 @@ export function TeamAccessPanel({ organizationId }: { organizationId: string }) 
             const name = [member.first_name, member.last_name].filter(Boolean).join(" ") || member.email;
             const isOwner = member.role === "owner";
             const isRequester = member.user_id === snapshot?.requesterUserId;
+            const manageable = snapshot?.canManage && !isOwner && !isRequester;
             return (
               <div key={member.user_id} className="flex flex-wrap items-center justify-between gap-3 py-4 first:pt-0 last:pb-0">
                 <div className="flex min-w-0 items-center gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gold/10 text-gold"><UserRound className="h-4 w-4" /></span><div className="min-w-0"><p className="truncate text-xs font-semibold">{name}{isRequester ? " · You" : ""}</p><p className="mt-0.5 truncate text-[10px] text-muted-foreground">{member.email}</p></div></div>
-                {snapshot?.canManage && !isOwner && !isRequester ? (
-                  <select
-                    value={member.role}
-                    disabled={working}
-                    onChange={event => setPendingRole({ userId: member.user_id, email: member.email, currentRole: member.role, nextRole: event.target.value as "admin" | "member" })}
-                    className="rounded-lg border border-subtle bg-surface px-3 py-2 text-[10px] font-semibold capitalize outline-none focus:border-gold disabled:opacity-50"
-                  >
-                    <option value="member">Member</option>
-                    <option value="admin">Admin</option>
-                  </select>
+                {manageable ? (
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={member.role}
+                      disabled={working}
+                      onChange={event => setPendingRole({ userId: member.user_id, email: member.email, currentRole: member.role, nextRole: event.target.value as "admin" | "member" })}
+                      className="rounded-lg border border-subtle bg-surface px-3 py-2 text-[10px] font-semibold capitalize outline-none focus:border-gold disabled:opacity-50"
+                    >
+                      <option value="member">Member</option>
+                      <option value="admin">Admin</option>
+                    </select>
+                    <button type="button" onClick={() => setPendingRemoval({ userId: member.user_id, email: member.email, role: member.role })} disabled={working} className="inline-flex items-center gap-1.5 rounded-lg border border-[oklch(0.62_0.22_25/30%)] px-3 py-2 text-[10px] font-semibold text-[oklch(0.72_0.16_25)] hover:bg-[oklch(0.62_0.22_25/8%)] disabled:opacity-50"><Trash2 className="h-3.5 w-3.5" />Remove</button>
+                  </div>
                 ) : (
                   <span className="inline-flex items-center gap-1.5 rounded-full border border-subtle px-2.5 py-1 text-[9px] font-mono font-semibold capitalize text-muted-foreground"><ShieldCheck className="h-3 w-3 text-gold" />{member.role}</span>
                 )}
@@ -118,7 +137,7 @@ export function TeamAccessPanel({ organizationId }: { organizationId: string }) 
         </div>
       </section>
 
-      {!snapshot?.canManage && <div className="rounded-xl border border-subtle bg-background/35 p-4 text-xs text-muted-foreground">You can view workspace access. Only the Owner can invite teammates or change member roles.</div>}
+      {!snapshot?.canManage && <div className="rounded-xl border border-subtle bg-background/35 p-4 text-xs text-muted-foreground">You can view workspace access. Only the Owner can invite teammates, change roles, or remove members.</div>}
 
       {pendingRole && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/75 p-4" onMouseDown={() => !working && setPendingRole(null)}>
@@ -127,6 +146,18 @@ export function TeamAccessPanel({ organizationId }: { organizationId: string }) 
             <h3 className="mt-1 font-display text-xl font-semibold">Change workspace access?</h3>
             <p className="mt-4 text-xs leading-5 text-muted-foreground"><span className="font-semibold text-foreground">{pendingRole.email}</span> will change from {pendingRole.currentRole} to {pendingRole.nextRole}. This affects what they can manage in the workspace.</p>
             <div className="mt-6 flex justify-end gap-3"><button type="button" onClick={() => setPendingRole(null)} disabled={working} className="rounded-lg border border-subtle px-4 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground disabled:opacity-50">Cancel</button><button type="button" onClick={() => void changeRole()} disabled={working} className="rounded-lg bg-gold px-4 py-2 text-xs font-semibold text-black disabled:opacity-50">{working ? "Updating..." : `Change to ${pendingRole.nextRole}`}</button></div>
+          </div>
+        </div>
+      )}
+
+      {pendingRemoval && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/75 p-4" onMouseDown={() => !working && setPendingRemoval(null)}>
+          <div className="w-full max-w-md rounded-2xl border border-[oklch(0.62_0.22_25/35%)] bg-background p-6 shadow-2xl" onMouseDown={event => event.stopPropagation()}>
+            <p className="text-[10px] font-mono uppercase tracking-wider text-[oklch(0.72_0.16_25)]">Remove Workspace Access</p>
+            <h3 className="mt-1 font-display text-xl font-semibold">Remove this member?</h3>
+            <p className="mt-4 text-xs leading-5 text-muted-foreground"><span className="font-semibold text-foreground">{pendingRemoval.email}</span> will immediately lose access to this workspace. Their account and historical activity will remain intact.</p>
+            <div className="mt-4 rounded-lg border border-subtle bg-surface/60 p-3 text-[10px] text-muted-foreground">Current role: <span className="font-semibold capitalize text-foreground">{pendingRemoval.role}</span></div>
+            <div className="mt-6 flex justify-end gap-3"><button type="button" onClick={() => setPendingRemoval(null)} disabled={working} className="rounded-lg border border-subtle px-4 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground disabled:opacity-50">Cancel</button><button type="button" onClick={() => void removeMember()} disabled={working} className="rounded-lg bg-[oklch(0.62_0.22_25)] px-4 py-2 text-xs font-semibold text-white disabled:opacity-50">{working ? "Removing..." : "Remove Access"}</button></div>
           </div>
         </div>
       )}
