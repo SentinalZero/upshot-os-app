@@ -43,6 +43,9 @@ jobs:
       - name: Deploy team access management
         run: supabase functions deploy manage-team-access --project-ref "$SUPABASE_PROJECT_ID"
 
+      - name: Deploy organization approval policies
+        run: supabase functions deploy manage-organization-policy --project-ref "$SUPABASE_PROJECT_ID"
+
       - name: Deploy authenticated manual trigger
         run: supabase functions deploy start-workflow-execution --project-ref "$SUPABASE_PROJECT_ID"
 
