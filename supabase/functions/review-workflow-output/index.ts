@@ -42,14 +42,16 @@ serve(async (req) => {
 
     if (!membership) return respond({ error: "You do not belong to this organization" }, 403);
 
-    const { data: execution } = await admin
+    const { data: execution, error: executionError } = await admin
       .from("workflow_executions")
-      .select("id, digital_specialist_id, trigger_metadata, output_summary, status")
+      .select("id, specialist_id, trigger_metadata, output_summary, status")
       .eq("id", executionId)
       .eq("organization_id", organizationId)
       .single();
 
-    if (!execution) return respond({ error: "Workflow execution was not found" }, 404);
+    if (executionError || !execution) {
+      return respond({ error: executionError?.message || "Workflow execution was not found" }, 404);
+    }
 
     const output = execution.output_summary && typeof execution.output_summary === "object"
       ? execution.output_summary as Record<string, unknown>
@@ -87,9 +89,9 @@ serve(async (req) => {
 
     if (updateError) throw new Error(`Could not save review: ${updateError.message}`);
 
-    await admin.from("activity_logs").insert({
+    const { error: activityError } = await admin.from("activity_logs").insert({
       organization_id: organizationId,
-      digital_specialist_id: execution.digital_specialist_id || null,
+      digital_specialist_id: execution.specialist_id || null,
       activity_type: `workflow_output_${reviewStatus}`,
       title: reviewStatus === "approved" ? "Draft approved" : reviewStatus === "changes_requested" ? "Changes requested" : "Draft dismissed",
       description: note || (reviewStatus === "approved" ? "A team member approved the prepared follow up draft." : reviewStatus === "changes_requested" ? "A team member requested changes to the prepared follow up draft." : "A team member dismissed the prepared follow up draft."),
@@ -100,6 +102,8 @@ serve(async (req) => {
         reviewed_by_user_id: user.id,
       },
     });
+
+    if (activityError) console.error("[review-workflow-output] activity log error", activityError.message);
 
     return respond({ success: true, execution_id: executionId, review });
   } catch (error) {
