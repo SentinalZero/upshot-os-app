@@ -12,6 +12,10 @@ function respond(body: Record<string, unknown>, status = 200) {
   });
 }
 
+function roleList(value: unknown, fallback: string[]): string[] {
+  return Array.isArray(value) ? value.map(String).map(role => role.toLowerCase()) : fallback;
+}
+
 serve(async (req) => {
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
@@ -41,6 +45,43 @@ serve(async (req) => {
       .single();
 
     if (!membership) return respond({ error: "You do not belong to this organization" }, 403);
+    const requesterRole = String(membership.role || "member").toLowerCase();
+
+    const { data: policy } = await admin
+      .from("organization_approval_policies")
+      .select("email_mode, approver_roles, sender_roles")
+      .eq("organization_id", organizationId)
+      .maybeSingle();
+
+    const emailMode = String(policy?.email_mode || "draft_only");
+    const approverRoles = roleList(policy?.approver_roles, ["owner", "admin"]);
+    const senderRoles = roleList(policy?.sender_roles, ["owner", "admin"]);
+
+    if (action === "approve" && !approverRoles.includes(requesterRole)) {
+      await admin.from("activity_logs").insert({
+        organization_id: organizationId,
+        digital_specialist_id: null,
+        activity_type: "workflow_approval_blocked",
+        title: "Draft approval blocked",
+        description: `${requesterRole} access is not allowed to approve workflow output under the current organization policy.`,
+        severity: "warning",
+        metadata: { execution_id: executionId, attempted_by_user_id: user.id, attempted_by_role: requesterRole, email_mode: emailMode },
+      });
+      return respond({ error: `Your ${requesterRole} role is not allowed to approve drafts` }, 403);
+    }
+
+    if (action === "approve" && emailMode === "auto_send_after_approval" && !senderRoles.includes(requesterRole)) {
+      await admin.from("activity_logs").insert({
+        organization_id: organizationId,
+        digital_specialist_id: null,
+        activity_type: "workflow_auto_send_blocked",
+        title: "Automatic send blocked",
+        description: `${requesterRole} access can approve but is not allowed to send under the current organization policy.`,
+        severity: "warning",
+        metadata: { execution_id: executionId, attempted_by_user_id: user.id, attempted_by_role: requesterRole, email_mode: emailMode },
+      });
+      return respond({ error: `Auto send requires a role that is allowed to both approve and send` }, 403);
+    }
 
     const { data: execution, error: executionError } = await admin
       .from("workflow_executions")
@@ -72,7 +113,8 @@ serve(async (req) => {
       note: note || null,
       reviewed_at: now,
       reviewed_by_user_id: user.id,
-      reviewed_by_role: membership.role || "member",
+      reviewed_by_role: requesterRole,
+      organization_email_mode: emailMode,
     };
 
     const { error: updateError } = await admin
@@ -99,12 +141,46 @@ serve(async (req) => {
         execution_id: executionId,
         review_status: reviewStatus,
         reviewed_by_user_id: user.id,
+        reviewed_by_role: requesterRole,
+        email_mode: emailMode,
       },
     });
 
     if (activityError) console.error("[review-workflow-output] activity log error", activityError.message);
 
-    return respond({ success: true, execution_id: executionId, review });
+    let autoSend: Record<string, unknown> | null = null;
+    if (action === "approve" && emailMode === "auto_send_after_approval") {
+      const authorization = req.headers.get("Authorization") || "";
+      const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+      const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
+      if (!supabaseUrl || !authorization) throw new Error("Automatic send could not be started because Supabase function credentials are unavailable");
+
+      const sendResponse = await fetch(`${supabaseUrl}/functions/v1/send-approved-gmail-draft`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: authorization,
+          apikey: anonKey,
+        },
+        body: JSON.stringify({ organization_id: organizationId, execution_id: executionId, automated_after_approval: true }),
+      });
+      const sendText = await sendResponse.text();
+      try { autoSend = sendText ? JSON.parse(sendText) : {}; } catch { autoSend = { error: sendText || "Automatic send failed" }; }
+      if (!sendResponse.ok) {
+        await admin.from("activity_logs").insert({
+          organization_id: organizationId,
+          digital_specialist_id: execution.specialist_id || null,
+          activity_type: "workflow_auto_send_failed",
+          title: "Automatic email send failed",
+          description: typeof autoSend?.error === "string" ? autoSend.error : "The approved email could not be sent automatically.",
+          severity: "warning",
+          metadata: { execution_id: executionId, approved_by_user_id: user.id, email_mode: emailMode },
+        });
+        return respond({ success: true, execution_id: executionId, review, auto_send: { success: false, ...autoSend } }, 202);
+      }
+    }
+
+    return respond({ success: true, execution_id: executionId, review, auto_send: autoSend });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Internal server error";
     console.error("[review-workflow-output]", message);
