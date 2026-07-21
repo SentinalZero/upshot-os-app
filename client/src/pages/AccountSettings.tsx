@@ -2,6 +2,7 @@ import { Link, useLocation } from "wouter";
 import { Building2, ChevronLeft, ShieldCheck, UserRound, UsersRound } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { AppUserMenu } from "@/components/AppUserMenu";
+import { TeamAccessPanel } from "@/components/TeamAccessPanel";
 
 export default function AccountSettings() {
   const { user, profile, organization, orgRole } = useAuth();
@@ -75,11 +76,8 @@ export default function AccountSettings() {
 
             {section === "team" && (
               <>
-                <SectionHeader icon={UsersRound} title="Team & Access" description="Understand who can enter the workspace and what each role can manage." />
-                <div className="mt-6 rounded-xl border border-subtle bg-background/35 p-5">
-                  <p className="text-sm font-semibold">Member management is being prepared</p>
-                  <p className="mt-2 text-xs leading-5 text-muted-foreground">This section will hold invitations, role changes, member status, and clear permission descriptions. Your current role is {role}.</p>
-                </div>
+                <SectionHeader icon={UsersRound} title="Team & Access" description="Invite teammates, review workspace membership, and control pending access." />
+                {organization?.id ? <TeamAccessPanel organizationId={organization.id} /> : <div className="mt-6 rounded-xl border border-subtle p-5 text-xs text-muted-foreground">No active organization is available.</div>}
               </>
             )}
 
