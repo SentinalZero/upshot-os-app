@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, ChevronDown, Clock3, ListChecks, MailCheck, X } from "lucide-react";
 import type { WorkflowExecutionDetail } from "@/lib/executionDetailService";
 import { DraftReviewActions } from "@/components/DraftReviewActions";
+import { GmailDraftEditor } from "@/components/GmailDraftEditor";
 import type { WorkflowReviewRecord } from "@/lib/workflowReviewService";
 
 interface ExecutionDetailModalProps {
@@ -15,6 +16,7 @@ interface ExecutionDetailModalProps {
 
 export function ExecutionDetailModal({ detail, loading, error, activityTitle, specialistName, onClose }: ExecutionDetailModalProps) {
   const [emailOpen, setEmailOpen] = useState(true);
+  const [reviewReset, setReviewReset] = useState(false);
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
@@ -40,13 +42,14 @@ export function ExecutionDetailModal({ detail, loading, error, activityTitle, sp
   const followUpEmail = objectValue(output.follow_up_email);
   const gmailDraft = objectValue(output.gmail_draft);
   const gmailRecipients = stringList(gmailDraft.recipients).length > 0 ? stringList(gmailDraft.recipients) : stringList(metadata.gmail_draft_recipients);
-  const gmailSubject = stringValue(gmailDraft.subject) || stringValue(followUpEmail.subject) || stringValue(metadata.gmail_draft_subject);
-  const gmailBody = stringValue(followUpEmail.body) || stringValue(gmailDraft.body) || stringValue(metadata.gmail_draft_body);
+  const gmailSubject = stringValue(metadata.gmail_draft_subject) || stringValue(gmailDraft.subject) || stringValue(followUpEmail.subject);
+  const gmailBody = stringValue(metadata.gmail_draft_body) || stringValue(followUpEmail.body) || stringValue(gmailDraft.body);
   const gmailDraftId = stringValue(gmailDraft.draft_id) || stringValue(metadata.gmail_draft_id);
   const gmailCreatedAt = stringValue(metadata.gmail_draft_created_at);
   const hasGmailDraft = Boolean(gmailDraftId || gmailSubject || gmailRecipients.length > 0 || gmailBody);
   const reviewCandidate = objectValue(metadata.human_review);
-  const initialReview = isReviewRecord(reviewCandidate) ? reviewCandidate : null;
+  const storedReview = isReviewRecord(reviewCandidate) ? reviewCandidate : null;
+  const initialReview = reviewReset ? null : storedReview;
 
   return (
     <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/70 p-0 backdrop-blur-sm sm:items-center sm:p-6" onMouseDown={onClose}>
@@ -73,6 +76,7 @@ export function ExecutionDetailModal({ detail, loading, error, activityTitle, sp
                 {detail.n8n_execution_id && <DetailPill label="n8n verified" />}
                 {hasGmailDraft && <DetailPill label="Gmail draft created" />}
                 {initialReview && <DetailPill label={initialReview.status.replaceAll("_", " ")} />}
+                {reviewReset && <DetailPill label="review required" />}
               </div>
 
               <section className="rounded-xl border border-subtle bg-surface p-5">
@@ -91,7 +95,7 @@ export function ExecutionDetailModal({ detail, loading, error, activityTitle, sp
                         <div><p className="text-[10px] font-mono uppercase tracking-wider text-[oklch(0.75_0.18_155)]">Customer Follow Up</p><h3 className="mt-1 text-sm font-semibold">Review email draft</h3></div>
                         <div className="flex items-center gap-2"><span className="rounded-full bg-[oklch(0.75_0.18_155/15%)] px-2.5 py-1 text-[9px] font-mono font-semibold uppercase tracking-wider text-[oklch(0.75_0.18_155)]">{initialReview ? initialReview.status.replaceAll("_", " ") : "Ready for review"}</span><ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${emailOpen ? "rotate-180" : ""}`} /></div>
                       </div>
-                      <p className="mt-2 text-xs text-muted-foreground">Review exactly what Upshot prepared before opening Gmail.</p>
+                      <p className="mt-2 text-xs text-muted-foreground">Review and revise what Upshot prepared before sending.</p>
                     </div>
                   </button>
 
@@ -100,13 +104,21 @@ export function ExecutionDetailModal({ detail, loading, error, activityTitle, sp
                       <dl className="grid grid-cols-1 gap-4 text-xs sm:grid-cols-2">
                         <DetailRow label="Recipients" value={gmailRecipients.length > 0 ? gmailRecipients.join(", ") : "Not recorded"} />
                         <DetailRow label="Prepared" value={formatDateTime(gmailCreatedAt || detail.completed_at)} />
-                        <div className="min-w-0 sm:col-span-2"><dt className="text-[10px] uppercase tracking-wider text-muted-foreground">Subject</dt><dd className="mt-1 break-words text-foreground/85">{gmailSubject || "Follow up email"}</dd></div>
                       </dl>
-                      <div className="mt-5 rounded-xl border border-subtle bg-background/55 p-5">
-                        <p className="mb-3 text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Email Preview</p>
-                        <div className="whitespace-pre-wrap text-sm leading-6 text-foreground/90">{gmailBody || "The email body was not stored with this execution. Open the Gmail draft to review the full message."}</div>
-                      </div>
-                      <DraftReviewActions organizationId={detail.organization_id} executionId={detail.id} initialReview={initialReview} />
+                      <GmailDraftEditor
+                        organizationId={detail.organization_id}
+                        executionId={detail.id}
+                        initialSubject={gmailSubject || "Follow up email"}
+                        initialBody={gmailBody}
+                        approved={initialReview?.status === "approved"}
+                        onSaved={() => setReviewReset(true)}
+                      />
+                      <DraftReviewActions
+                        key={reviewReset ? "revised-draft" : initialReview?.reviewed_at || "unreviewed-draft"}
+                        organizationId={detail.organization_id}
+                        executionId={detail.id}
+                        initialReview={initialReview}
+                      />
                     </div>
                   )}
                 </section>

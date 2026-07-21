@@ -55,6 +55,9 @@ jobs:
       - name: Deploy Gmail follow up draft creation
         run: supabase functions deploy create-google-gmail-draft --project-ref "$SUPABASE_PROJECT_ID" --no-verify-jwt
 
+      - name: Deploy Gmail draft editing
+        run: supabase functions deploy update-google-gmail-draft --project-ref "$SUPABASE_PROJECT_ID"
+
       - name: Deploy workflow completion callback
         run: supabase functions deploy complete-workflow-execution --project-ref "$SUPABASE_PROJECT_ID" --no-verify-jwt
 
