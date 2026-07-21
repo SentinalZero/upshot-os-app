@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, ChevronDown, Clock3, ListChecks, MailCheck, X } from "lucide-react";
 import type { WorkflowExecutionDetail } from "@/lib/executionDetailService";
+import { DraftReviewActions } from "@/components/DraftReviewActions";
+import type { WorkflowReviewRecord } from "@/lib/workflowReviewService";
 
 interface ExecutionDetailModalProps {
   detail: WorkflowExecutionDetail | null;
@@ -43,6 +45,8 @@ export function ExecutionDetailModal({ detail, loading, error, activityTitle, sp
   const gmailDraftId = stringValue(gmailDraft.draft_id) || stringValue(metadata.gmail_draft_id);
   const gmailCreatedAt = stringValue(metadata.gmail_draft_created_at);
   const hasGmailDraft = Boolean(gmailDraftId || gmailSubject || gmailRecipients.length > 0 || gmailBody);
+  const reviewCandidate = objectValue(metadata.human_review);
+  const initialReview = isReviewRecord(reviewCandidate) ? reviewCandidate : null;
 
   return (
     <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/70 p-0 backdrop-blur-sm sm:items-center sm:p-6" onMouseDown={onClose}>
@@ -68,6 +72,7 @@ export function ExecutionDetailModal({ detail, loading, error, activityTitle, sp
                 {detail.trigger_source && <DetailPill label={detail.trigger_source.replaceAll("_", " ")} />}
                 {detail.n8n_execution_id && <DetailPill label="n8n verified" />}
                 {hasGmailDraft && <DetailPill label="Gmail draft created" />}
+                {initialReview && <DetailPill label={initialReview.status.replaceAll("_", " ")} />}
               </div>
 
               <section className="rounded-xl border border-subtle bg-surface p-5">
@@ -84,7 +89,7 @@ export function ExecutionDetailModal({ detail, loading, error, activityTitle, sp
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div><p className="text-[10px] font-mono uppercase tracking-wider text-[oklch(0.75_0.18_155)]">Customer Follow Up</p><h3 className="mt-1 text-sm font-semibold">Review email draft</h3></div>
-                        <div className="flex items-center gap-2"><span className="rounded-full bg-[oklch(0.75_0.18_155/15%)] px-2.5 py-1 text-[9px] font-mono font-semibold uppercase tracking-wider text-[oklch(0.75_0.18_155)]">Ready for review</span><ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${emailOpen ? "rotate-180" : ""}`} /></div>
+                        <div className="flex items-center gap-2"><span className="rounded-full bg-[oklch(0.75_0.18_155/15%)] px-2.5 py-1 text-[9px] font-mono font-semibold uppercase tracking-wider text-[oklch(0.75_0.18_155)]">{initialReview ? initialReview.status.replaceAll("_", " ") : "Ready for review"}</span><ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${emailOpen ? "rotate-180" : ""}`} /></div>
                       </div>
                       <p className="mt-2 text-xs text-muted-foreground">Review exactly what Upshot prepared before opening Gmail.</p>
                     </div>
@@ -101,7 +106,7 @@ export function ExecutionDetailModal({ detail, loading, error, activityTitle, sp
                         <p className="mb-3 text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Email Preview</p>
                         <div className="whitespace-pre-wrap text-sm leading-6 text-foreground/90">{gmailBody || "The email body was not stored with this execution. Open the Gmail draft to review the full message."}</div>
                       </div>
-                      <div className="mt-4 rounded-lg border border-subtle bg-background/30 p-3 text-[11px] leading-5 text-muted-foreground">Upshot created a draft only. Nothing was sent automatically.</div>
+                      <DraftReviewActions organizationId={detail.organization_id} executionId={detail.id} initialReview={initialReview} />
                     </div>
                   )}
                 </section>
@@ -133,4 +138,5 @@ function DetailRow({ label, value, mono }: { label: string; value: string; mono?
 function objectValue(value: unknown): Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
 function stringList(value: unknown): string[] { return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0) : []; }
 function stringValue(value: unknown): string { return typeof value === "string" ? value.trim() : ""; }
+function isReviewRecord(value: Record<string, unknown>): value is WorkflowReviewRecord { return ["approved", "changes_requested", "dismissed"].includes(String(value.status || "")) && typeof value.reviewed_at === "string" && typeof value.reviewed_by_user_id === "string" && typeof value.reviewed_by_role === "string"; }
 function formatDateTime(value?: string | null): string { if (!value) return "Not recorded"; const date = new Date(value); if (Number.isNaN(date.getTime())) return "Not recorded"; return date.toLocaleString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }); }
