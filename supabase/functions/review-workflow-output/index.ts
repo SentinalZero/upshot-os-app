@@ -82,7 +82,6 @@ serve(async (req) => {
           ...existingMetadata,
           human_review: review,
         },
-        updated_at: now,
       })
       .eq("id", executionId)
       .eq("organization_id", organizationId);
