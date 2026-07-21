@@ -11,14 +11,20 @@ import {
 } from "lucide-react";
 import type { DigitalSpecialist, SpecialistOperationalSummary } from "@/lib/supabaseService";
 import type { SpecialistDetailData } from "@/lib/specialistDetailService";
+import type { SpecialistLifecycleAction } from "@/lib/specialistLifecycleService";
+import { SpecialistLifecyclePanel } from "@/components/SpecialistLifecyclePanel";
 
 interface SpecialistDetailModalProps {
   specialist: DigitalSpecialist;
   operationalSummary?: SpecialistOperationalSummary;
   detail: SpecialistDetailData | null;
   loading: boolean;
+  canManageLifecycle: boolean;
+  lifecycleLoading: boolean;
+  lifecycleError: string | null;
   onClose: () => void;
   onOpenJob: (executionId: string, specialistName: string) => void;
+  onLifecycleAction: (action: SpecialistLifecycleAction) => Promise<void>;
 }
 
 export function SpecialistDetailModal({
@@ -26,15 +32,19 @@ export function SpecialistDetailModal({
   operationalSummary,
   detail,
   loading,
+  canManageLifecycle,
+  lifecycleLoading,
+  lifecycleError,
   onClose,
   onOpenJob,
+  onLifecycleAction,
 }: SpecialistDetailModalProps) {
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape" && !lifecycleLoading) onClose();
     };
 
     window.addEventListener("keydown", handleKeyDown);
@@ -42,9 +52,9 @@ export function SpecialistDetailModal({
       document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [onClose]);
+  }, [lifecycleLoading, onClose]);
 
-  const state = operationalSummary?.state || "offline";
+  const state = operationalSummary?.state || specialist.status || "offline";
 
   return (
     <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/70 p-0 backdrop-blur-sm sm:items-center sm:p-6" onMouseDown={onClose}>
@@ -69,7 +79,8 @@ export function SpecialistDetailModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg border border-subtle p-2 text-muted-foreground transition-colors hover:border-foreground/20 hover:text-foreground"
+            disabled={lifecycleLoading}
+            className="rounded-lg border border-subtle p-2 text-muted-foreground transition-colors hover:border-foreground/20 hover:text-foreground disabled:opacity-50"
             aria-label="Close specialist profile"
           >
             <X className="h-4 w-4" />
@@ -183,6 +194,18 @@ export function SpecialistDetailModal({
                   </div>
                 )) : <EmptyState text="Nothing is waiting for human review." success />}
               </DetailSection>
+
+              <SpecialistLifecyclePanel
+                specialistName={specialist.name}
+                specialistStatus={specialist.status}
+                canManage={canManageLifecycle}
+                capabilities={detail.capabilities.length}
+                integrations={detail.integrations.length}
+                jobs={detail.jobs.length}
+                actionLoading={lifecycleLoading}
+                actionError={lifecycleError}
+                onAction={onLifecycleAction}
+              />
             </>
           )}
         </div>
@@ -196,10 +219,7 @@ function DetailSection({ icon: Icon, eyebrow, title, children }: { icon: typeof 
     <section className="rounded-xl border border-subtle bg-surface p-5">
       <div className="mb-4 flex items-center gap-3">
         <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gold/10 text-gold"><Icon className="h-4 w-4" /></div>
-        <div>
-          <p className="text-[9px] font-mono uppercase tracking-wider text-muted-foreground">{eyebrow}</p>
-          <h3 className="font-display text-base font-semibold">{title}</h3>
-        </div>
+        <div><p className="text-[9px] font-mono uppercase tracking-wider text-muted-foreground">{eyebrow}</p><h3 className="font-display text-base font-semibold">{title}</h3></div>
       </div>
       <div className="space-y-3">{children}</div>
     </section>
@@ -207,17 +227,11 @@ function DetailSection({ icon: Icon, eyebrow, title, children }: { icon: typeof 
 }
 
 function ProfileMetric({ label, value, alert }: { label: string; value: number; alert?: boolean }) {
-  return (
-    <div className={`rounded-xl border bg-surface p-4 ${alert ? "border-[oklch(0.75_0.18_75/40%)]" : "border-subtle"}`}>
-      <p className={`font-mono text-xl font-bold ${alert ? "text-[oklch(0.78_0.16_75)]" : ""}`}>{value}</p>
-      <p className="mt-1 text-[9px] uppercase tracking-wider text-muted-foreground">{label}</p>
-    </div>
-  );
+  return <div className={`rounded-xl border bg-surface p-4 ${alert ? "border-[oklch(0.75_0.18_75/40%)]" : "border-subtle"}`}><p className={`font-mono text-xl font-bold ${alert ? "text-[oklch(0.78_0.16_75)]" : ""}`}>{value}</p><p className="mt-1 text-[9px] uppercase tracking-wider text-muted-foreground">{label}</p></div>;
 }
 
 function StateBadge({ state }: { state: string }) {
-  const label = state === "idle" ? "Ready" : formatLabel(state);
-  return <StatusPill status={label} />;
+  return <StatusPill status={state === "idle" ? "Ready" : formatLabel(state)} />;
 }
 
 function StatusPill({ status }: { status: string }) {
@@ -229,65 +243,26 @@ function StatusPill({ status }: { status: string }) {
       : ["warning", "needs review", "needs_review", "pending", "selected"].includes(normalized)
         ? "bg-[oklch(0.75_0.18_75/15%)] text-[oklch(0.78_0.16_75)]"
         : "bg-gold/10 text-gold";
-
   return <span className={`inline-flex rounded-full px-2.5 py-1 text-[9px] font-mono font-semibold capitalize ${className}`}>{formatLabel(status)}</span>;
 }
 
 function JobIcon({ status }: { status: string }) {
   const normalized = status.toLowerCase();
-  if (["successful", "success", "completed"].includes(normalized)) {
-    return <CheckCircle2 className="h-5 w-5 shrink-0 text-[oklch(0.75_0.18_155)]" />;
-  }
-  if (["failed", "error"].includes(normalized)) {
-    return <AlertTriangle className="h-5 w-5 shrink-0 text-[oklch(0.75_0.18_25)]" />;
-  }
+  if (["successful", "success", "completed"].includes(normalized)) return <CheckCircle2 className="h-5 w-5 shrink-0 text-[oklch(0.75_0.18_155)]" />;
+  if (["failed", "error"].includes(normalized)) return <AlertTriangle className="h-5 w-5 shrink-0 text-[oklch(0.75_0.18_25)]" />;
   return <Clock3 className="h-5 w-5 shrink-0 text-gold" />;
 }
 
 function EmptyState({ text, success }: { text: string; success?: boolean }) {
-  return (
-    <div className="flex items-center gap-3 rounded-lg border border-dashed border-subtle bg-background/25 p-4 text-xs text-muted-foreground">
-      {success ? <CheckCircle2 className="h-4 w-4 text-[oklch(0.75_0.18_155)]" /> : <Clock3 className="h-4 w-4" />}
-      {text}
-    </div>
-  );
+  return <div className="flex items-center gap-3 rounded-lg border border-dashed border-subtle bg-background/25 p-4 text-xs text-muted-foreground">{success ? <CheckCircle2 className="h-4 w-4 text-[oklch(0.75_0.18_155)]" /> : <Clock3 className="h-4 w-4" />}{text}</div>;
 }
 
 function InfoPill({ label }: { label: string }) {
   return <span className="rounded-full border border-subtle px-3 py-1 text-[10px] font-mono text-muted-foreground">{label}</span>;
 }
 
-function shortId(value: string): string {
-  return value.length > 12 ? `${value.slice(0, 8)}…${value.slice(-4)}` : value;
-}
-
-function formatLabel(value: string): string {
-  return value.replaceAll("_", " ").replace(/\b\w/g, letter => letter.toUpperCase());
-}
-
-function formatDate(value?: string | null): string {
-  if (!value) return "Not recorded";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Not recorded";
-  return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
-}
-
-function formatDateTime(value?: string | null): string {
-  if (!value) return "Not recorded";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Not recorded";
-  return date.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-}
-
-function formatRelativeTime(value?: string | null): string {
-  if (!value) return "No activity yet";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Activity recorded";
-  const seconds = Math.max(0, Math.floor((Date.now() - date.getTime()) / 1000));
-  if (seconds < 60) return "Just now";
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return formatDate(value);
-}
+function shortId(value: string): string { return value.length > 12 ? `${value.slice(0, 8)}…${value.slice(-4)}` : value; }
+function formatLabel(value: string): string { return value.replaceAll("_", " ").replace(/\b\w/g, letter => letter.toUpperCase()); }
+function formatDate(value?: string | null): string { if (!value) return "Not recorded"; const date = new Date(value); return Number.isNaN(date.getTime()) ? "Not recorded" : date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }); }
+function formatDateTime(value?: string | null): string { if (!value) return "Not recorded"; const date = new Date(value); return Number.isNaN(date.getTime()) ? "Not recorded" : date.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }); }
+function formatRelativeTime(value?: string | null): string { if (!value) return "No activity yet"; const date = new Date(value); if (Number.isNaN(date.getTime())) return "Activity recorded"; const seconds = Math.max(0, Math.floor((Date.now() - date.getTime()) / 1000)); if (seconds < 60) return "Just now"; const minutes = Math.floor(seconds / 60); if (minutes < 60) return `${minutes}m ago`; const hours = Math.floor(minutes / 60); if (hours < 24) return `${hours}h ago`; return formatDate(value); }
