@@ -106,6 +106,7 @@ serve(async (req) => {
     checkoutBody.set("allow_promotion_codes", "true");
     checkoutBody.set("billing_address_collection", "required");
     checkoutBody.set("customer_update[address]", "auto");
+    checkoutBody.set("customer_update[name]", "auto");
     checkoutBody.set("tax_id_collection[enabled]", "true");
     checkoutBody.set("automatic_tax[enabled]", "true");
     checkoutBody.set("subscription_data[metadata][organization_id]", organizationId);
