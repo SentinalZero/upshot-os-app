@@ -146,7 +146,44 @@ serve(async (req) => {
       return respond({ success: true, member_user_id: memberUserId, role });
     }
 
-    return respond({ error: "action must be list, invite, revoke, or update_role" }, 400);
+    if (action === "remove_member") {
+      const memberUserId = typeof body.member_user_id === "string" ? body.member_user_id : "";
+      if (!UUID_PATTERN.test(memberUserId)) return respond({ error: "Valid member_user_id is required" }, 400);
+      if (memberUserId === user.id) return respond({ error: "The Owner cannot remove their own access" }, 409);
+
+      const { data: target, error: targetError } = await admin.from("organization_members")
+        .select("user_id, role").eq("organization_id", organizationId).eq("user_id", memberUserId).single();
+      if (targetError || !target) return respond({ error: "Workspace member was not found" }, 404);
+      if (String(target.role).toLowerCase() === "owner") return respond({ error: "The Owner cannot be removed" }, 409);
+
+      const { data: authUser } = await admin.auth.admin.getUserById(memberUserId);
+      const email = authUser.user?.email || "Workspace member";
+
+      const { error: deleteError } = await admin.from("organization_members")
+        .delete().eq("organization_id", organizationId).eq("user_id", memberUserId);
+      if (deleteError) return respond({ error: deleteError.message }, 500);
+
+      const { data: profile } = await admin.from("profiles").select("active_organization_id").eq("id", memberUserId).maybeSingle();
+      if (profile?.active_organization_id === organizationId) {
+        const { data: fallbackMembership } = await admin.from("organization_members")
+          .select("organization_id").eq("user_id", memberUserId).limit(1).maybeSingle();
+        await admin.from("profiles").update({ active_organization_id: fallbackMembership?.organization_id || null }).eq("id", memberUserId);
+      }
+
+      await admin.from("activity_logs").insert({
+        organization_id: organizationId,
+        digital_specialist_id: null,
+        activity_type: "organization_member_removed",
+        title: "Workspace access removed",
+        description: `${email} was removed from the workspace.`,
+        severity: "warning",
+        metadata: { member_user_id: memberUserId, previous_role: target.role, removed_by_user_id: user.id, email },
+      });
+
+      return respond({ success: true, member_user_id: memberUserId, removed_role: target.role });
+    }
+
+    return respond({ error: "action must be list, invite, revoke, update_role, or remove_member" }, 400);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Internal server error";
     console.error("[manage-team-access]", message);

@@ -71,3 +71,8 @@ export async function updateTeamMemberRole(organizationId: string, userId: strin
   const result = await invoke({ action: "update_role", organization_id: organizationId, member_user_id: userId, role });
   return { success: !result.error && result.data?.success === true, error: result.error };
 }
+
+export async function removeTeamMember(organizationId: string, userId: string) {
+  const result = await invoke({ action: "remove_member", organization_id: organizationId, member_user_id: userId });
+  return { success: !result.error && result.data?.success === true, error: result.error };
+}
