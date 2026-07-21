@@ -23,6 +23,7 @@ export interface TeamAccessSnapshot {
   invitations: TeamInvitation[];
   canManage: boolean;
   requesterRole: string;
+  requesterUserId: string;
 }
 
 async function invoke(body: Record<string, unknown>) {
@@ -50,6 +51,7 @@ export async function fetchTeamAccess(organizationId: string): Promise<{ data: T
       invitations: Array.isArray(result.data.invitations) ? result.data.invitations : [],
       canManage: result.data.can_manage === true,
       requesterRole: String(result.data.requester_role || "member"),
+      requesterUserId: String(result.data.requester_user_id || ""),
     },
     error: null,
   };
@@ -62,5 +64,10 @@ export async function inviteTeamMember(organizationId: string, email: string, ro
 
 export async function revokeTeamInvitation(organizationId: string, invitationId: string) {
   const result = await invoke({ action: "revoke", organization_id: organizationId, invitation_id: invitationId });
+  return { success: !result.error && result.data?.success === true, error: result.error };
+}
+
+export async function updateTeamMemberRole(organizationId: string, userId: string, role: "admin" | "member") {
+  const result = await invoke({ action: "update_role", organization_id: organizationId, member_user_id: userId, role });
   return { success: !result.error && result.data?.success === true, error: result.error };
 }

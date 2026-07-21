@@ -34,7 +34,6 @@ serve(async (req) => {
         .select("organization_id, user_id, role").eq("organization_id", organizationId);
       if (membersError) throw new Error(membersError.message);
 
-      const userIds = (members || []).map((item) => item.user_id);
       const memberRows = [];
       for (const item of members || []) {
         const { data: authUser } = await admin.auth.admin.getUserById(item.user_id);
@@ -56,10 +55,10 @@ serve(async (req) => {
         .order("invited_at", { ascending: false });
       if (invitationsError) throw new Error(invitationsError.message);
 
-      return respond({ success: true, members: memberRows, invitations: invitations || [], can_manage: canManage, requester_role: requesterRole, member_user_ids: userIds });
+      return respond({ success: true, members: memberRows, invitations: invitations || [], can_manage: canManage, requester_role: requesterRole, requester_user_id: user.id });
     }
 
-    if (!canManage) return respond({ error: "Only the organization owner can manage invitations" }, 403);
+    if (!canManage) return respond({ error: "Only the organization owner can manage team access" }, 403);
 
     if (action === "invite") {
       const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
@@ -116,7 +115,38 @@ serve(async (req) => {
       return respond({ success: true, invitation });
     }
 
-    return respond({ error: "action must be list, invite, or revoke" }, 400);
+    if (action === "update_role") {
+      const memberUserId = typeof body.member_user_id === "string" ? body.member_user_id : "";
+      const role = typeof body.role === "string" ? body.role.toLowerCase() : "";
+      if (!UUID_PATTERN.test(memberUserId)) return respond({ error: "Valid member_user_id is required" }, 400);
+      if (!["admin", "member"].includes(role)) return respond({ error: "role must be admin or member" }, 400);
+      if (memberUserId === user.id) return respond({ error: "The Owner role cannot be changed here" }, 409);
+
+      const { data: target, error: targetError } = await admin.from("organization_members")
+        .select("user_id, role").eq("organization_id", organizationId).eq("user_id", memberUserId).single();
+      if (targetError || !target) return respond({ error: "Workspace member was not found" }, 404);
+      if (String(target.role).toLowerCase() === "owner") return respond({ error: "Owner transfer is not available" }, 409);
+
+      const { error: updateError } = await admin.from("organization_members")
+        .update({ role }).eq("organization_id", organizationId).eq("user_id", memberUserId);
+      if (updateError) return respond({ error: updateError.message }, 500);
+
+      const { data: authUser } = await admin.auth.admin.getUserById(memberUserId);
+      const email = authUser.user?.email || "Workspace member";
+      await admin.from("activity_logs").insert({
+        organization_id: organizationId,
+        digital_specialist_id: null,
+        activity_type: "organization_member_role_updated",
+        title: "Workspace role updated",
+        description: `${email} was changed to ${role}.`,
+        severity: "warning",
+        metadata: { member_user_id: memberUserId, previous_role: target.role, role, changed_by_user_id: user.id },
+      });
+
+      return respond({ success: true, member_user_id: memberUserId, role });
+    }
+
+    return respond({ error: "action must be list, invite, revoke, or update_role" }, 400);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Internal server error";
     console.error("[manage-team-access]", message);
