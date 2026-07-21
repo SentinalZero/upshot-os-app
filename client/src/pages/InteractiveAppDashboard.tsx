@@ -13,6 +13,7 @@ import {
 import { fetchConnectionCounts, type ConnectionCounts } from "@/lib/connectionsService";
 import { fetchWorkflowExecutionDetail, type WorkflowExecutionDetail } from "@/lib/executionDetailService";
 import { fetchSpecialistDetail, type SpecialistDetailData } from "@/lib/specialistDetailService";
+import { manageDigitalSpecialist, type SpecialistLifecycleAction } from "@/lib/specialistLifecycleService";
 import { ExecutionDetailModal } from "@/components/ExecutionDetailModal";
 import { SpecialistDetailModal } from "@/components/SpecialistDetailModal";
 import { CommandCenterWorkforce } from "@/components/CommandCenterWorkforce";
@@ -29,7 +30,7 @@ const emptyMetrics: DashboardMetrics = {
 };
 
 export default function InteractiveAppDashboard() {
-  const { user, profile, organization, signOut } = useAuth();
+  const { user, profile, organization, orgRole, signOut } = useAuth();
   const [signingOut, setSigningOut] = useState(false);
   const [specialists, setSpecialists] = useState<DigitalSpecialist[]>([]);
   const [workflowCounts, setWorkflowCounts] = useState<Record<string, number>>({});
@@ -41,6 +42,7 @@ export default function InteractiveAppDashboard() {
   const [refreshing, setRefreshing] = useState(false);
   const [dataErrors, setDataErrors] = useState<string[]>([]);
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const [selectedExecution, setSelectedExecution] = useState<WorkflowExecutionDetail | null>(null);
   const [selectedActivityTitle, setSelectedActivityTitle] = useState("");
@@ -51,6 +53,8 @@ export default function InteractiveAppDashboard() {
   const [selectedSpecialist, setSelectedSpecialist] = useState<DigitalSpecialist | null>(null);
   const [specialistDetail, setSpecialistDetail] = useState<SpecialistDetailData | null>(null);
   const [specialistDetailLoading, setSpecialistDetailLoading] = useState(false);
+  const [lifecycleLoading, setLifecycleLoading] = useState(false);
+  const [lifecycleError, setLifecycleError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!profile?.active_organization_id) return;
@@ -91,7 +95,7 @@ export default function InteractiveAppDashboard() {
       if (refreshTimer) clearTimeout(refreshTimer);
       unsubscribe();
     };
-  }, [profile?.active_organization_id]);
+  }, [profile?.active_organization_id, refreshKey]);
 
   const specialistNameById = useMemo(
     () => Object.fromEntries(specialists.map(specialist => [specialist.id, specialist.name])),
@@ -101,13 +105,11 @@ export default function InteractiveAppDashboard() {
   const loadExecutionDetail = async (executionId: string, title: string, specialistName?: string) => {
     const organizationId = profile?.active_organization_id;
     if (!organizationId) return;
-
     setSelectedExecution(null);
     setSelectedActivityTitle(title);
     setSelectedExecutionSpecialistName(specialistName);
     setExecutionDetailError(null);
     setExecutionDetailLoading(true);
-
     const result = await fetchWorkflowExecutionDetail(organizationId, executionId);
     setExecutionDetailLoading(false);
     setSelectedExecution(result.data);
@@ -117,7 +119,6 @@ export default function InteractiveAppDashboard() {
   const handleOpenActivity = async (item: ActivityLog) => {
     const executionId = typeof item.metadata?.execution_id === "string" ? item.metadata.execution_id : "";
     if (!executionId) return;
-
     await loadExecutionDetail(
       executionId,
       item.title || item.message || "Workflow activity",
@@ -128,9 +129,9 @@ export default function InteractiveAppDashboard() {
   const handleOpenSpecialist = async (specialist: DigitalSpecialist) => {
     const organizationId = profile?.active_organization_id;
     if (!organizationId) return;
-
     setSelectedSpecialist(specialist);
     setSpecialistDetail(null);
+    setLifecycleError(null);
     setSpecialistDetailLoading(true);
     const detail = await fetchSpecialistDetail(organizationId, specialist.id);
     setSpecialistDetail(detail);
@@ -141,7 +142,24 @@ export default function InteractiveAppDashboard() {
     setSelectedSpecialist(null);
     setSpecialistDetail(null);
     setSpecialistDetailLoading(false);
+    setLifecycleError(null);
     await loadExecutionDetail(executionId, "Workflow execution", specialistName);
+  };
+
+  const handleLifecycleAction = async (action: SpecialistLifecycleAction) => {
+    const organizationId = profile?.active_organization_id;
+    if (!organizationId || !selectedSpecialist) return;
+    setLifecycleLoading(true);
+    setLifecycleError(null);
+    const result = await manageDigitalSpecialist(organizationId, selectedSpecialist.id, action);
+    setLifecycleLoading(false);
+    if (!result.success) {
+      setLifecycleError(result.error || "The specialist could not be updated.");
+      return;
+    }
+    setSelectedSpecialist(null);
+    setSpecialistDetail(null);
+    setRefreshKey(value => value + 1);
   };
 
   const handleCloseExecutionDetail = () => {
@@ -153,9 +171,11 @@ export default function InteractiveAppDashboard() {
   };
 
   const handleCloseSpecialistDetail = () => {
+    if (lifecycleLoading) return;
     setSelectedSpecialist(null);
     setSpecialistDetail(null);
     setSpecialistDetailLoading(false);
+    setLifecycleError(null);
   };
 
   const handleSignOut = async () => {
@@ -168,6 +188,7 @@ export default function InteractiveAppDashboard() {
     : user?.email || "User";
   const firstName = profile?.first_name || "Operator";
   const executionDetailOpen = executionDetailLoading || !!selectedExecution || !!executionDetailError;
+  const canManageLifecycle = ["owner", "admin"].includes((orgRole || "").toLowerCase());
 
   return (
     <div className="min-h-screen bg-background">
@@ -259,8 +280,12 @@ export default function InteractiveAppDashboard() {
           operationalSummary={specialistSummaries[selectedSpecialist.id]}
           detail={specialistDetail}
           loading={specialistDetailLoading}
+          canManageLifecycle={canManageLifecycle}
+          lifecycleLoading={lifecycleLoading}
+          lifecycleError={lifecycleError}
           onClose={handleCloseSpecialistDetail}
           onOpenJob={handleOpenSpecialistJob}
+          onLifecycleAction={handleLifecycleAction}
         />
       )}
 
@@ -279,19 +304,9 @@ export default function InteractiveAppDashboard() {
 }
 
 function MetricCard({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
-  return (
-    <div className={`rounded-xl border bg-surface p-5 ${highlight ? "border-[oklch(0.62_0.22_25/40%)]" : "border-subtle"}`}>
-      <p className="text-[10px] font-mono text-muted-foreground tracking-wider uppercase mb-2">{label}</p>
-      <span className={`text-2xl font-mono font-bold ${highlight ? "text-[oklch(0.75_0.18_25)]" : ""}`}>{value}</span>
-    </div>
-  );
+  return <div className={`rounded-xl border bg-surface p-5 ${highlight ? "border-[oklch(0.62_0.22_25/40%)]" : "border-subtle"}`}><p className="text-[10px] font-mono text-muted-foreground tracking-wider uppercase mb-2">{label}</p><span className={`text-2xl font-mono font-bold ${highlight ? "text-[oklch(0.75_0.18_25)]" : ""}`}>{value}</span></div>;
 }
 
 function MiniMetric({ label, value, alert }: { label: string; value: number; alert?: boolean }) {
-  return (
-    <div>
-      <p className={`text-lg font-mono font-bold ${alert ? "text-[oklch(0.75_0.18_25)]" : ""}`}>{value}</p>
-      <p className="text-[10px] text-muted-foreground">{label}</p>
-    </div>
-  );
+  return <div><p className={`text-lg font-mono font-bold ${alert ? "text-[oklch(0.75_0.18_25)]" : ""}`}>{value}</p><p className="text-[10px] text-muted-foreground">{label}</p></div>;
 }
