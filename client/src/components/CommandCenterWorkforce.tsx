@@ -127,14 +127,26 @@ function SpecialistCard({
   capabilityCount: number;
   onOpen: (specialist: DigitalSpecialist) => void;
 }) {
-  const state = summary?.state || "offline";
-  const status = workforceStateConfig[state];
+  const lifecycleStatus = (specialist.framework_lifecycle_status || specialist.status || "").toLowerCase();
+  const deactivated = ["inactive", "paused", "retired", "terminated"].includes(lifecycleStatus);
+  const state = deactivated ? "offline" : (summary?.state || "offline");
+  const status = deactivated
+    ? {
+        label: "Deactivated",
+        badgeClass: "bg-muted/50 text-muted-foreground",
+        dotClass: "bg-muted-foreground",
+      }
+    : workforceStateConfig[state];
 
   return (
     <button
       type="button"
       onClick={() => onOpen(specialist)}
-      className="group w-full rounded-xl border border-subtle bg-background/35 p-5 text-left transition-all hover:border-foreground/20 hover:bg-background/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"
+      className={`group w-full rounded-xl border p-5 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold ${
+        deactivated
+          ? "border-dashed border-subtle bg-background/20 opacity-75 hover:opacity-100"
+          : "border-subtle bg-background/35 hover:border-foreground/20 hover:bg-background/55"
+      }`}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
@@ -142,14 +154,16 @@ function SpecialistCard({
           <p className="text-xs text-muted-foreground truncate">{specialist.role_name || "Digital Specialist"}</p>
         </div>
         <span className={`shrink-0 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-mono font-semibold ${status.badgeClass}`}>
-          <span className={`w-1.5 h-1.5 rounded-full ${status.dotClass} ${state === "working" ? "animate-pulse" : ""}`} />
+          <span className={`w-1.5 h-1.5 rounded-full ${status.dotClass} ${state === "working" && !deactivated ? "animate-pulse" : ""}`} />
           {status.label}
         </span>
       </div>
 
       <div className="mt-5 rounded-lg border border-subtle bg-surface/60 p-3">
         <p className="text-[9px] font-mono uppercase tracking-wider text-muted-foreground mb-1">Current Work</p>
-        <p className="text-xs font-medium line-clamp-2">{summary?.currentJob || "Ready for work"}</p>
+        <p className="text-xs font-medium line-clamp-2">
+          {deactivated ? "Deactivated. No new work will be assigned." : summary?.currentJob || "Ready for work"}
+        </p>
       </div>
 
       <div className="grid grid-cols-3 gap-3 mt-4">
@@ -161,7 +175,7 @@ function SpecialistCard({
       <div className="flex items-center justify-between mt-4 pt-4 border-t border-subtle text-[10px] text-muted-foreground">
         <span>{specialist.industry_name || "General Operations"}</span>
         <span className="flex items-center gap-1.5">
-          View profile
+          {deactivated ? "Manage specialist" : "View profile"}
           <ChevronRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5 group-hover:text-gold" />
         </span>
       </div>
