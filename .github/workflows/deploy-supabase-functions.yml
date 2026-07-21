@@ -49,6 +49,9 @@ jobs:
       - name: Deploy billing and usage summary
         run: supabase functions deploy get-billing-usage --project-ref "$SUPABASE_PROJECT_ID"
 
+      - name: Deploy Stripe Checkout session creation
+        run: supabase functions deploy create-stripe-checkout-session --project-ref "$SUPABASE_PROJECT_ID"
+
       - name: Deploy authenticated manual trigger
         run: supabase functions deploy start-workflow-execution --project-ref "$SUPABASE_PROJECT_ID"
 
