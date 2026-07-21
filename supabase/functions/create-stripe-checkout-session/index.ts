@@ -62,7 +62,7 @@ serve(async (req) => {
       .single();
 
     if (!membership) return respond({ error: "You do not belong to this organization" }, 403);
-    if (!['owner', 'admin'].includes(String(membership.role || '').toLowerCase())) {
+    if (!["owner", "admin"].includes(String(membership.role || "").toLowerCase())) {
       return respond({ error: "Only organization owners and admins can manage billing" }, 403);
     }
 
@@ -105,6 +105,7 @@ serve(async (req) => {
     checkoutBody.set("cancel_url", `${APP_URL}/app/settings/billing?checkout=canceled`);
     checkoutBody.set("allow_promotion_codes", "true");
     checkoutBody.set("billing_address_collection", "required");
+    checkoutBody.set("customer_update[address]", "auto");
     checkoutBody.set("tax_id_collection[enabled]", "true");
     checkoutBody.set("automatic_tax[enabled]", "true");
     checkoutBody.set("subscription_data[metadata][organization_id]", organizationId);
