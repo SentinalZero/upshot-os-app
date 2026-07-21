@@ -99,6 +99,7 @@ serve(async (req) => {
     const checkoutBody = new URLSearchParams();
     checkoutBody.set("mode", "subscription");
     checkoutBody.set("customer", customerId);
+    checkoutBody.set("payment_method_types[0]", "card");
     checkoutBody.set("line_items[0][price]", priceId);
     checkoutBody.set("line_items[0][quantity]", String(quantity));
     checkoutBody.set("success_url", `${APP_URL}/app/settings/billing?checkout=success&session_id={CHECKOUT_SESSION_ID}`);
