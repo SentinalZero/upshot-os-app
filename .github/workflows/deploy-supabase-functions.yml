@@ -46,6 +46,9 @@ jobs:
       - name: Deploy organization approval policies
         run: supabase functions deploy manage-organization-policy --project-ref "$SUPABASE_PROJECT_ID"
 
+      - name: Deploy billing and usage summary
+        run: supabase functions deploy get-billing-usage --project-ref "$SUPABASE_PROJECT_ID"
+
       - name: Deploy authenticated manual trigger
         run: supabase functions deploy start-workflow-execution --project-ref "$SUPABASE_PROJECT_ID"
 
