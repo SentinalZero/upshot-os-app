@@ -139,87 +139,34 @@ alter table public.specialist_outcome_metrics enable row level security;
 drop policy if exists "organization members can view specialist role profiles" on public.specialist_role_profiles;
 create policy "organization members can view specialist role profiles"
   on public.specialist_role_profiles for select
-  using (exists (
-    select 1 from public.organization_members member
-    where member.organization_id = specialist_role_profiles.organization_id
-      and member.user_id = auth.uid()
-  ));
+  using (exists (select 1 from public.organization_members member where member.organization_id = specialist_role_profiles.organization_id and member.user_id = auth.uid()));
 
 drop policy if exists "organization members can view specialist capabilities" on public.specialist_capabilities;
 create policy "organization members can view specialist capabilities"
   on public.specialist_capabilities for select
-  using (exists (
-    select 1 from public.organization_members member
-    where member.organization_id = specialist_capabilities.organization_id
-      and member.user_id = auth.uid()
-  ));
+  using (exists (select 1 from public.organization_members member where member.organization_id = specialist_capabilities.organization_id and member.user_id = auth.uid()));
 
 drop policy if exists "organization members can view specialist triggers" on public.specialist_triggers;
 create policy "organization members can view specialist triggers"
   on public.specialist_triggers for select
-  using (exists (
-    select 1 from public.organization_members member
-    where member.organization_id = specialist_triggers.organization_id
-      and member.user_id = auth.uid()
-  ));
+  using (exists (select 1 from public.organization_members member where member.organization_id = specialist_triggers.organization_id and member.user_id = auth.uid()));
 
 drop policy if exists "organization members can view specialist permissions" on public.specialist_permissions;
 create policy "organization members can view specialist permissions"
   on public.specialist_permissions for select
-  using (exists (
-    select 1 from public.organization_members member
-    where member.organization_id = specialist_permissions.organization_id
-      and member.user_id = auth.uid()
-  ));
+  using (exists (select 1 from public.organization_members member where member.organization_id = specialist_permissions.organization_id and member.user_id = auth.uid()));
 
 drop policy if exists "organization members can view specialist escalation rules" on public.specialist_escalation_rules;
 create policy "organization members can view specialist escalation rules"
   on public.specialist_escalation_rules for select
-  using (exists (
-    select 1 from public.organization_members member
-    where member.organization_id = specialist_escalation_rules.organization_id
-      and member.user_id = auth.uid()
-  ));
+  using (exists (select 1 from public.organization_members member where member.organization_id = specialist_escalation_rules.organization_id and member.user_id = auth.uid()));
 
 drop policy if exists "organization members can view specialist knowledge sources" on public.specialist_knowledge_sources;
 create policy "organization members can view specialist knowledge sources"
   on public.specialist_knowledge_sources for select
-  using (exists (
-    select 1 from public.organization_members member
-    where member.organization_id = specialist_knowledge_sources.organization_id
-      and member.user_id = auth.uid()
-  ));
+  using (exists (select 1 from public.organization_members member where member.organization_id = specialist_knowledge_sources.organization_id and member.user_id = auth.uid()));
 
 drop policy if exists "organization members can view specialist outcome metrics" on public.specialist_outcome_metrics;
 create policy "organization members can view specialist outcome metrics"
   on public.specialist_outcome_metrics for select
-  using (exists (
-    select 1 from public.organization_members member
-    where member.organization_id = specialist_outcome_metrics.organization_id
-      and member.user_id = auth.uid()
-  ));
-
--- Give every existing specialist a role profile without guessing customer-specific capabilities.
-insert into public.specialist_role_profiles (
-  specialist_id,
-  organization_id,
-  mission,
-  operating_instructions,
-  boundaries,
-  status,
-  metadata
-)
-select
-  specialist.id,
-  specialist.organization_id,
-  coalesce(nullif(specialist.role_name, ''), nullif(specialist.name, ''), 'Digital Specialist') || ' operational mission',
-  'Coordinate assigned capabilities, follow organization policies, request approval for governed actions, and escalate exceptions that require human judgment.',
-  array[
-    'Do not take actions outside assigned capabilities.',
-    'Do not bypass organization approval policies.',
-    'Escalate when required information is missing or confidence is low.'
-  ]::text[],
-  case when lower(coalesce(specialist.status, '')) in ('active', 'ready', 'deployed') then 'active' else 'draft' end,
-  jsonb_build_object('migrated_from_existing_specialist', true)
-from public.digital_specialists specialist
-on conflict (specialist_id) do nothing;
+  using (exists (select 1 from public.organization_members member where member.organization_id = specialist_outcome_metrics.organization_id and member.user_id = auth.uid()));
