@@ -2,6 +2,8 @@ import { Link } from "wouter";
 import { Activity, AlertTriangle, CheckCircle2, ChevronRight, Clock3, Link2, Plus, Radar, Rocket, ShieldCheck, Sparkles } from "lucide-react";
 import type { ActivityLog, DashboardMetrics, DigitalSpecialist, SpecialistOperationalSummary, WorkforceState } from "@/lib/supabaseService";
 import type { ConnectionCounts } from "@/lib/connectionsService";
+import { buildAttentionQueue } from "@/lib/attentionQueueService";
+import { AttentionQueuePanel } from "@/components/AttentionQueuePanel";
 
 interface CommandCenterWorkforceProps {
   loading: boolean;
@@ -22,10 +24,7 @@ export function CommandCenterWorkforce({ loading, specialists, workflowCounts, s
   const reviewCount = specialists.reduce((total, specialist) => total + (specialistSummaries[specialist.id]?.needsReview || 0), 0);
   const capabilityCount = Object.values(workflowCounts).reduce((total, count) => total + count, 0);
   const workingCount = specialists.filter(specialist => specialistSummaries[specialist.id]?.state === "working").length;
-  const attentionItems = recentActivity.filter(item => {
-    const severity = item.severity?.toLowerCase();
-    return severity === "warning" || severity === "critical" || item.metadata?.requires_human_attention === true || item.metadata?.requires_human_attention === "true";
-  }).slice(0, 4);
+  const attentionItems = buildAttentionQueue(recentActivity);
 
   return (
     <div className="space-y-6">
@@ -42,10 +41,7 @@ export function CommandCenterWorkforce({ loading, specialists, workflowCounts, s
         </div>
       </section>
 
-      <section className={`overflow-hidden rounded-2xl border bg-surface ${attentionItems.length > 0 ? "border-[oklch(0.75_0.18_75/35%)]" : "border-subtle"}`}>
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-subtle p-5"><div><p className="text-[10px] font-mono uppercase tracking-wider text-[oklch(0.78_0.16_75)]">Attention Queue</p><strong className="font-display text-base">Decisions that need you</strong><p className="mt-1 text-xs text-muted-foreground">Upshot brings exceptions and approval requests forward so you do not have to hunt for them.</p></div><span className={`rounded-full px-3 py-1 text-[10px] font-mono font-semibold ${attentionItems.length > 0 ? "bg-[oklch(0.75_0.18_75/15%)] text-[oklch(0.78_0.16_75)]" : "bg-[oklch(0.75_0.18_155/12%)] text-[oklch(0.75_0.18_155)]"}`}>{attentionItems.length > 0 ? `${attentionItems.length} visible` : "All clear"}</span></div>
-        {attentionItems.length > 0 ? <div className="grid grid-cols-1 divide-y divide-subtle lg:grid-cols-2 lg:divide-x lg:divide-y-0">{attentionItems.map(item => <AttentionItem key={item.id} item={item} specialistName={item.digital_specialist_id ? specialistNameById[item.digital_specialist_id] : undefined} onOpen={onOpenActivity} />)}</div> : <div className="flex items-center gap-3 p-5 text-xs text-muted-foreground"><CheckCircle2 className="h-5 w-5 text-[oklch(0.75_0.18_155)]" />No approvals or exceptions are waiting for you.</div>}
-      </section>
+      <AttentionQueuePanel items={attentionItems} specialistNameById={specialistNameById} onOpen={onOpenActivity} />
 
       <div className="grid grid-cols-1 items-start gap-8 xl:grid-cols-[1.35fr_0.85fr]">
         <section className="overflow-hidden rounded-2xl border border-subtle bg-surface">
@@ -65,12 +61,6 @@ export function CommandCenterWorkforce({ loading, specialists, workflowCounts, s
       </section>
     </div>
   );
-}
-
-function AttentionItem({ item, specialistName, onOpen }: { item: ActivityLog; specialistName?: string; onOpen: (item: ActivityLog) => void }) {
-  const executionId = typeof item.metadata?.execution_id === "string" ? item.metadata.execution_id : "";
-  const content = <><div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[oklch(0.75_0.18_75/12%)] text-[oklch(0.78_0.16_75)]"><AlertTriangle className="h-4 w-4" /></div><div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-3"><p className="text-sm font-semibold">{item.title || "Review requested"}</p><span className="whitespace-nowrap text-[9px] font-mono text-muted-foreground">{formatActivityTime(item.created_at)}</span></div><p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{item.description || item.message || "This item needs human judgment."}</p><div className="mt-2 flex items-center justify-between gap-3"><span className="text-[10px] text-gold">{specialistName || "Workspace"}</span>{executionId && <span className="text-[9px] font-mono uppercase tracking-wider text-foreground/60">Review now</span>}</div></div>{executionId && <ChevronRight className="mt-2 h-4 w-4 shrink-0 text-muted-foreground" />}</>;
-  return executionId ? <button type="button" onClick={() => onOpen(item)} className="group flex w-full gap-3 p-5 text-left transition-colors hover:bg-background/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-gold">{content}</button> : <div className="flex gap-3 p-5">{content}</div>;
 }
 
 function SpecialistCard({ specialist, summary, capabilityCount, onOpen }: { specialist: DigitalSpecialist; summary?: SpecialistOperationalSummary; capabilityCount: number; onOpen: (specialist: DigitalSpecialist) => void }) {
