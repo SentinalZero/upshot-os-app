@@ -40,6 +40,9 @@ jobs:
       - name: Deploy Digital Specialist lifecycle controls
         run: supabase functions deploy manage-digital-specialist --project-ref "$SUPABASE_PROJECT_ID"
 
+      - name: Deploy team access management
+        run: supabase functions deploy manage-team-access --project-ref "$SUPABASE_PROJECT_ID"
+
       - name: Deploy authenticated manual trigger
         run: supabase functions deploy start-workflow-execution --project-ref "$SUPABASE_PROJECT_ID"
 
