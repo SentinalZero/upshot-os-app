@@ -56,7 +56,7 @@ serve(async (req) => {
       await admin.from("integrations").update({ status: "disconnected", updated_at: now })
         .eq("organization_id", organizationId).eq("digital_specialist_id", specialistId);
       const { error } = await admin.from("digital_specialists")
-        .update({ status: "inactive", framework_lifecycle_status: "inactive", paused_at: now, updated_at: now })
+        .update({ status: "inactive", framework_lifecycle_status: "paused", paused_at: now, updated_at: now })
         .eq("id", specialistId).eq("organization_id", organizationId);
       if (error) throw new Error(`Could not deactivate Digital Specialist: ${error.message}`);
     }
