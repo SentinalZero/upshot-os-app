@@ -1,14 +1,15 @@
 import { Link, useLocation } from "wouter";
-import { Building2, ChevronLeft, ShieldCheck, UserRound, UsersRound } from "lucide-react";
+import { Building2, ChevronLeft, CreditCard, ShieldCheck, UserRound, UsersRound } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { AppUserMenu } from "@/components/AppUserMenu";
 import { TeamAccessPanel } from "@/components/TeamAccessPanel";
 import { OrganizationPolicyPanel } from "@/components/OrganizationPolicyPanel";
+import { BillingUsagePanel } from "@/components/BillingUsagePanel";
 
 export default function AccountSettings() {
   const { user, profile, organization, orgRole } = useAuth();
   const [location] = useLocation();
-  const section = location.endsWith("/team") ? "team" : location.endsWith("/organization") ? "organization" : "profile";
+  const section = location.endsWith("/team") ? "team" : location.endsWith("/organization") ? "organization" : location.endsWith("/billing") ? "billing" : "profile";
   const role = formatRole(orgRole);
   const canManage = ["owner", "admin"].includes((orgRole || "").toLowerCase());
   const name = profile?.first_name
@@ -47,6 +48,7 @@ export default function AccountSettings() {
             <SettingsLink href="/app/settings/profile" active={section === "profile"} icon={UserRound} label="Profile" description="Account and role" />
             <SettingsLink href="/app/settings/team" active={section === "team"} icon={UsersRound} label="Team & Access" description="Members and permissions" />
             <SettingsLink href="/app/settings/organization" active={section === "organization"} icon={Building2} label="Organization" description="Policies and controls" />
+            <SettingsLink href="/app/settings/billing" active={section === "billing"} icon={CreditCard} label="Billing & Usage" description="Plan and workflow runs" />
           </aside>
 
           <section className="rounded-2xl border border-subtle bg-surface p-6 lg:p-8">
@@ -90,6 +92,13 @@ export default function AccountSettings() {
                   <InfoCard label="Your authority" value={canManage ? "Can manage settings" : "View only"} highlight={canManage} />
                 </div>
                 {organization?.id ? <OrganizationPolicyPanel organizationId={organization.id} /> : <div className="mt-6 rounded-xl border border-subtle p-5 text-xs text-muted-foreground">No active organization is available.</div>}
+              </>
+            )}
+
+            {section === "billing" && (
+              <>
+                <SectionHeader icon={CreditCard} title="Billing & Usage" description="Review your plan, billing status, workflow allowance, and current period usage." />
+                {organization?.id ? <BillingUsagePanel organizationId={organization.id} /> : <div className="mt-6 rounded-xl border border-subtle p-5 text-xs text-muted-foreground">No active organization is available.</div>}
               </>
             )}
           </section>
