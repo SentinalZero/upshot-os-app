@@ -3,6 +3,7 @@ import { Building2, ChevronLeft, ShieldCheck, UserRound, UsersRound } from "luci
 import { useAuth } from "@/contexts/AuthContext";
 import { AppUserMenu } from "@/components/AppUserMenu";
 import { TeamAccessPanel } from "@/components/TeamAccessPanel";
+import { OrganizationPolicyPanel } from "@/components/OrganizationPolicyPanel";
 
 export default function AccountSettings() {
   const { user, profile, organization, orgRole } = useAuth();
@@ -83,15 +84,12 @@ export default function AccountSettings() {
 
             {section === "organization" && (
               <>
-                <SectionHeader icon={Building2} title="Organization Settings" description="Workspace identity, approval defaults, operational policies, and security controls." />
+                <SectionHeader icon={Building2} title="Organization Settings" description="Set workspace-wide approval and email execution policies." />
                 <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <InfoCard label="Organization" value={organization?.name || "No organization"} />
                   <InfoCard label="Your authority" value={canManage ? "Can manage settings" : "View only"} highlight={canManage} />
                 </div>
-                <div className="mt-6 rounded-xl border border-subtle bg-background/35 p-5">
-                  <p className="text-sm font-semibold">Policy controls are being prepared</p>
-                  <p className="mt-2 text-xs leading-5 text-muted-foreground">Approval defaults, security policies, billing, and workspace preferences will live here so administrative controls are never mixed into daily operations.</p>
-                </div>
+                {organization?.id ? <OrganizationPolicyPanel organizationId={organization.id} /> : <div className="mt-6 rounded-xl border border-subtle p-5 text-xs text-muted-foreground">No active organization is available.</div>}
               </>
             )}
           </section>
