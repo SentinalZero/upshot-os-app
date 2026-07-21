@@ -58,6 +58,11 @@ function Router() {
           <AccountSettings />
         </ProtectedRoute>
       </Route>
+      <Route path={"/app/settings/billing"}>
+        <ProtectedRoute requireOrg>
+          <AccountSettings />
+        </ProtectedRoute>
+      </Route>
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />
     </Switch>
