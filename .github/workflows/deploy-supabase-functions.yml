@@ -52,6 +52,9 @@ jobs:
       - name: Deploy Stripe Checkout session creation
         run: supabase functions deploy create-stripe-checkout-session --project-ref "$SUPABASE_PROJECT_ID"
 
+      - name: Deploy Stripe webhook
+        run: supabase functions deploy stripe-webhook --project-ref "$SUPABASE_PROJECT_ID" --no-verify-jwt
+
       - name: Deploy authenticated manual trigger
         run: supabase functions deploy start-workflow-execution --project-ref "$SUPABASE_PROJECT_ID"
 
