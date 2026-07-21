@@ -41,9 +41,8 @@ export function SpecialistLifecyclePanel({
     setPendingAction(null);
   };
 
-  const confirmed = pendingAction === "delete"
-    ? confirmation.trim() === specialistName.trim()
-    : confirmation.trim().toUpperCase() === (pendingAction === "deactivate" ? "DEACTIVATE" : "REACTIVATE");
+  const confirmationWord = pendingAction ? actionConfirmationWord(pendingAction) : "";
+  const confirmed = confirmation.trim().toUpperCase() === confirmationWord;
 
   return (
     <section className="rounded-xl border border-[oklch(0.62_0.22_25/30%)] bg-[oklch(0.62_0.22_25/5%)] p-5">
@@ -106,13 +105,16 @@ export function SpecialistLifecyclePanel({
 
             <p className="mt-4 text-xs leading-5 text-muted-foreground">{actionDescription(pendingAction, specialistName)}</p>
             <label className="mt-5 block text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
-              Type {pendingAction === "delete" ? specialistName : pendingAction.toUpperCase()} to confirm
+              Type <span className="font-semibold text-foreground">{confirmationWord}</span> to confirm
             </label>
             <input
               value={confirmation}
               onChange={event => setConfirmation(event.target.value)}
               disabled={actionLoading}
-              className="mt-2 w-full rounded-lg border border-subtle bg-surface px-3 py-2.5 text-sm outline-none transition-colors focus:border-gold disabled:opacity-60"
+              autoComplete="off"
+              spellCheck={false}
+              placeholder={confirmationWord}
+              className="mt-2 w-full rounded-lg border border-subtle bg-surface px-3 py-2.5 text-sm uppercase outline-none transition-colors focus:border-gold disabled:opacity-60"
               autoFocus
             />
 
@@ -134,6 +136,12 @@ export function SpecialistLifecyclePanel({
       )}
     </section>
   );
+}
+
+function actionConfirmationWord(action: SpecialistLifecycleAction): string {
+  if (action === "delete") return "DELETE";
+  if (action === "reactivate") return "REACTIVATE";
+  return "DEACTIVATE";
 }
 
 function actionTitle(action: SpecialistLifecycleAction): string {
