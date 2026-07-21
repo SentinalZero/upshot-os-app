@@ -57,3 +57,6 @@ jobs:
 
       - name: Deploy workflow completion callback
         run: supabase functions deploy complete-workflow-execution --project-ref "$SUPABASE_PROJECT_ID" --no-verify-jwt
+
+      - name: Deploy workflow output review
+        run: supabase functions deploy review-workflow-output --project-ref "$SUPABASE_PROJECT_ID"
