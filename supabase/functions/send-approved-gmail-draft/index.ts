@@ -14,6 +14,10 @@ function objectValue(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
 
+function roleList(value: unknown, fallback: string[]): string[] {
+  return Array.isArray(value) ? value.map(String).map(role => role.toLowerCase()) : fallback;
+}
+
 async function refreshAccessToken(admin: ReturnType<typeof getSupabaseAdmin>, integration: Record<string, any>, secrets: Record<string, any>) {
   if (!secrets.encrypted_refresh_token) throw new Error("Google refresh token is unavailable. Reconnect Google Workspace.");
   const clientId = Deno.env.get("GOOGLE_CLIENT_ID");
@@ -56,12 +60,51 @@ serve(async (req) => {
     const body = objectValue(await req.json().catch(() => ({})));
     const organizationId = typeof body.organization_id === "string" ? body.organization_id : "";
     const executionId = typeof body.execution_id === "string" ? body.execution_id : "";
+    const automatedAfterApproval = body.automated_after_approval === true;
     if (!UUID_PATTERN.test(organizationId) || !UUID_PATTERN.test(executionId)) return respond({ error: "Valid organization_id and execution_id are required" }, 400);
 
     const admin = getSupabaseAdmin();
     const { data: membership } = await admin.from("organization_members").select("id, role")
       .eq("organization_id", organizationId).eq("user_id", user.id).single();
     if (!membership) return respond({ error: "You do not belong to this organization" }, 403);
+    const requesterRole = String(membership.role || "member").toLowerCase();
+
+    const { data: policy } = await admin.from("organization_approval_policies")
+      .select("email_mode, approver_roles, sender_roles")
+      .eq("organization_id", organizationId)
+      .maybeSingle();
+    const emailMode = String(policy?.email_mode || "draft_only");
+    const senderRoles = roleList(policy?.sender_roles, ["owner", "admin"]);
+
+    if (emailMode === "draft_only") {
+      await admin.from("activity_logs").insert({
+        organization_id: organizationId,
+        digital_specialist_id: null,
+        activity_type: "gmail_send_blocked_by_policy",
+        title: "Email send blocked",
+        description: "The organization is configured for Draft only mode, so emails cannot be sent from Upshot.",
+        severity: "warning",
+        metadata: { execution_id: executionId, attempted_by_user_id: user.id, attempted_by_role: requesterRole, email_mode: emailMode },
+      });
+      return respond({ error: "Organization policy is set to Draft only. Sending is disabled." }, 403);
+    }
+
+    if (!senderRoles.includes(requesterRole)) {
+      await admin.from("activity_logs").insert({
+        organization_id: organizationId,
+        digital_specialist_id: null,
+        activity_type: "gmail_send_blocked_by_role",
+        title: "Email send blocked",
+        description: `${requesterRole} access is not allowed to send email under the current organization policy.`,
+        severity: "warning",
+        metadata: { execution_id: executionId, attempted_by_user_id: user.id, attempted_by_role: requesterRole, email_mode: emailMode },
+      });
+      return respond({ error: `Your ${requesterRole} role is not allowed to send emails` }, 403);
+    }
+
+    if (automatedAfterApproval && emailMode !== "auto_send_after_approval") {
+      return respond({ error: "Automatic sending is not enabled for this organization" }, 409);
+    }
 
     const { data: execution, error: executionError } = await admin.from("workflow_executions")
       .select("id, organization_id, specialist_id, source_integration_id, trigger_metadata")
@@ -73,7 +116,18 @@ serve(async (req) => {
     const draftId = typeof metadata.gmail_draft_id === "string" ? metadata.gmail_draft_id : "";
     const recipients = Array.isArray(metadata.gmail_draft_recipients) ? metadata.gmail_draft_recipients.map(String).filter(Boolean) : [];
     if (typeof metadata.gmail_sent_at === "string") return respond({ error: "This email was already sent", sent_at: metadata.gmail_sent_at }, 409);
-    if (review.status !== "approved") return respond({ error: "The draft must be approved before it can be sent" }, 409);
+    if (review.status !== "approved") {
+      await admin.from("activity_logs").insert({
+        organization_id: organizationId,
+        digital_specialist_id: execution.specialist_id || null,
+        activity_type: "gmail_send_blocked_unapproved",
+        title: "Email send blocked",
+        description: "The email draft has not been approved.",
+        severity: "warning",
+        metadata: { execution_id: executionId, attempted_by_user_id: user.id, attempted_by_role: requesterRole, email_mode: emailMode },
+      });
+      return respond({ error: "The draft must be approved before it can be sent" }, 409);
+    }
     if (!draftId) return respond({ error: "This execution does not have a Gmail draft" }, 409);
     if (!execution.source_integration_id) return respond({ error: "Execution has no source Google integration" }, 409);
 
@@ -115,8 +169,11 @@ serve(async (req) => {
       ...metadata,
       gmail_sent_at: sentAt,
       gmail_sent_by_user_id: user.id,
+      gmail_sent_by_role: requesterRole,
+      gmail_sent_automatically: automatedAfterApproval,
       gmail_sent_message_id: sentPayload.id || null,
       gmail_sent_thread_id: sentPayload.threadId || null,
+      gmail_sent_policy_mode: emailMode,
     };
     const { error: updateError } = await admin.from("workflow_executions")
       .update({ trigger_metadata: updatedMetadata })
@@ -126,14 +183,14 @@ serve(async (req) => {
     await admin.from("activity_logs").insert({
       organization_id: organizationId,
       digital_specialist_id: execution.specialist_id || null,
-      activity_type: "gmail_draft_sent",
-      title: "Follow up email sent",
+      activity_type: automatedAfterApproval ? "gmail_draft_auto_sent" : "gmail_draft_sent",
+      title: automatedAfterApproval ? "Follow up email sent automatically" : "Follow up email sent",
       description: recipients.length ? `The approved follow up email was sent to ${recipients.join(", ")}.` : "The approved follow up email was sent.",
       severity: "success",
-      metadata: { execution_id: executionId, draft_id: draftId, sent_by_user_id: user.id, message_id: sentPayload.id || null },
+      metadata: { execution_id: executionId, draft_id: draftId, sent_by_user_id: user.id, sent_by_role: requesterRole, automated_after_approval: automatedAfterApproval, email_mode: emailMode, message_id: sentPayload.id || null },
     });
 
-    return respond({ success: true, execution_id: executionId, sent_at: sentAt, message_id: sentPayload.id || null, thread_id: sentPayload.threadId || null });
+    return respond({ success: true, execution_id: executionId, sent_at: sentAt, automated_after_approval: automatedAfterApproval, message_id: sentPayload.id || null, thread_id: sentPayload.threadId || null });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Internal server error";
     console.error("[send-approved-gmail-draft]", message);
