@@ -46,6 +46,7 @@ export function ExecutionDetailModal({ detail, loading, error, activityTitle, sp
   const gmailBody = stringValue(metadata.gmail_draft_body) || stringValue(followUpEmail.body) || stringValue(gmailDraft.body);
   const gmailDraftId = stringValue(gmailDraft.draft_id) || stringValue(metadata.gmail_draft_id);
   const gmailCreatedAt = stringValue(metadata.gmail_draft_created_at);
+  const gmailSentAt = stringValue(metadata.gmail_sent_at);
   const hasGmailDraft = Boolean(gmailDraftId || gmailSubject || gmailRecipients.length > 0 || gmailBody);
   const reviewCandidate = objectValue(metadata.human_review);
   const storedReview = isReviewRecord(reviewCandidate) ? reviewCandidate : null;
@@ -65,7 +66,6 @@ export function ExecutionDetailModal({ detail, loading, error, activityTitle, sp
 
         <div className="space-y-6 p-5 sm:p-6">
           {loading && <div className="flex min-h-48 flex-col items-center justify-center gap-3"><div className="h-7 w-7 animate-spin rounded-full border-2 border-gold border-t-transparent" /><p className="text-xs font-mono text-muted-foreground">Loading the completed work...</p></div>}
-
           {!loading && error && <div className="rounded-xl border border-[oklch(0.62_0.22_25/40%)] bg-[oklch(0.62_0.22_25/8%)] p-4"><div className="flex items-center gap-2 text-[oklch(0.75_0.18_25)]"><AlertTriangle className="h-4 w-4" /><p className="text-sm font-semibold">Could not load this job</p></div><p className="mt-2 text-xs text-muted-foreground">{error}</p></div>}
 
           {!loading && detail && (
@@ -74,8 +74,8 @@ export function ExecutionDetailModal({ detail, loading, error, activityTitle, sp
                 <StatusBadge status={detail.status} successful={isSuccessful} failed={isFailed} />
                 {detail.trigger_source && <DetailPill label={detail.trigger_source.replaceAll("_", " ")} />}
                 {detail.n8n_execution_id && <DetailPill label="n8n verified" />}
-                {hasGmailDraft && <DetailPill label="Gmail draft created" />}
-                {initialReview && <DetailPill label={initialReview.status.replaceAll("_", " ")} />}
+                {hasGmailDraft && <DetailPill label={gmailSentAt ? "Email sent" : "Gmail draft created"} />}
+                {initialReview && !gmailSentAt && <DetailPill label={initialReview.status.replaceAll("_", " ")} />}
                 {reviewReset && <DetailPill label="review required" />}
               </div>
 
@@ -92,10 +92,10 @@ export function ExecutionDetailModal({ detail, loading, error, activityTitle, sp
                     <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[oklch(0.75_0.18_155/15%)] text-[oklch(0.75_0.18_155)]"><MailCheck className="h-4 w-4" /></div>
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div><p className="text-[10px] font-mono uppercase tracking-wider text-[oklch(0.75_0.18_155)]">Customer Follow Up</p><h3 className="mt-1 text-sm font-semibold">Review email draft</h3></div>
-                        <div className="flex items-center gap-2"><span className="rounded-full bg-[oklch(0.75_0.18_155/15%)] px-2.5 py-1 text-[9px] font-mono font-semibold uppercase tracking-wider text-[oklch(0.75_0.18_155)]">{initialReview ? initialReview.status.replaceAll("_", " ") : "Ready for review"}</span><ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${emailOpen ? "rotate-180" : ""}`} /></div>
+                        <div><p className="text-[10px] font-mono uppercase tracking-wider text-[oklch(0.75_0.18_155)]">Customer Follow Up</p><h3 className="mt-1 text-sm font-semibold">{gmailSentAt ? "Email sent" : "Review email draft"}</h3></div>
+                        <div className="flex items-center gap-2"><span className="rounded-full bg-[oklch(0.75_0.18_155/15%)] px-2.5 py-1 text-[9px] font-mono font-semibold uppercase tracking-wider text-[oklch(0.75_0.18_155)]">{gmailSentAt ? "Sent" : initialReview ? initialReview.status.replaceAll("_", " ") : "Ready for review"}</span><ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${emailOpen ? "rotate-180" : ""}`} /></div>
                       </div>
-                      <p className="mt-2 text-xs text-muted-foreground">Review and revise what Upshot prepared before sending.</p>
+                      <p className="mt-2 text-xs text-muted-foreground">{gmailSentAt ? `Sent ${formatDateTime(gmailSentAt)}` : "Review and revise what Upshot prepared before sending."}</p>
                     </div>
                   </button>
 
@@ -103,22 +103,10 @@ export function ExecutionDetailModal({ detail, loading, error, activityTitle, sp
                     <div className="border-t border-[oklch(0.75_0.18_155/20%)] p-5">
                       <dl className="grid grid-cols-1 gap-4 text-xs sm:grid-cols-2">
                         <DetailRow label="Recipients" value={gmailRecipients.length > 0 ? gmailRecipients.join(", ") : "Not recorded"} />
-                        <DetailRow label="Prepared" value={formatDateTime(gmailCreatedAt || detail.completed_at)} />
+                        <DetailRow label={gmailSentAt ? "Sent" : "Prepared"} value={formatDateTime(gmailSentAt || gmailCreatedAt || detail.completed_at)} />
                       </dl>
-                      <GmailDraftEditor
-                        organizationId={detail.organization_id}
-                        executionId={detail.id}
-                        initialSubject={gmailSubject || "Follow up email"}
-                        initialBody={gmailBody}
-                        approved={initialReview?.status === "approved"}
-                        onSaved={() => setReviewReset(true)}
-                      />
-                      <DraftReviewActions
-                        key={reviewReset ? "revised-draft" : initialReview?.reviewed_at || "unreviewed-draft"}
-                        organizationId={detail.organization_id}
-                        executionId={detail.id}
-                        initialReview={initialReview}
-                      />
+                      {!gmailSentAt && <GmailDraftEditor organizationId={detail.organization_id} executionId={detail.id} initialSubject={gmailSubject || "Follow up email"} initialBody={gmailBody} approved={initialReview?.status === "approved"} onSaved={() => setReviewReset(true)} />}
+                      <DraftReviewActions key={reviewReset ? "revised-draft" : gmailSentAt || initialReview?.reviewed_at || "unreviewed-draft"} organizationId={detail.organization_id} executionId={detail.id} initialReview={initialReview} recipients={gmailRecipients} subject={gmailSubject || "Follow up email"} initialSentAt={gmailSentAt || null} />
                     </div>
                   )}
                 </section>
@@ -140,12 +128,7 @@ function StatusBadge({ status, successful, failed }: { status: string; successfu
 }
 
 function DetailPill({ label }: { label: string }) { return <span className="rounded-full border border-subtle px-3 py-1 text-[10px] font-mono capitalize text-muted-foreground">{label}</span>; }
-
-function OutputList({ title, items, icon }: { title: string; items: string[]; icon: "check" | "action" }) {
-  const Icon = icon === "check" ? CheckCircle2 : ListChecks;
-  return <section className="rounded-xl border border-subtle bg-surface p-5"><div className="mb-3 flex items-center gap-2"><Icon className="h-4 w-4 text-gold" /><p className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">{title}</p></div><div className="space-y-3">{items.map((item, index) => <div key={`${title}-${index}`} className="flex gap-2 text-xs leading-5 text-foreground/85"><span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-gold" /><p>{item}</p></div>)}</div></section>;
-}
-
+function OutputList({ title, items, icon }: { title: string; items: string[]; icon: "check" | "action" }) { const Icon = icon === "check" ? CheckCircle2 : ListChecks; return <section className="rounded-xl border border-subtle bg-surface p-5"><div className="mb-3 flex items-center gap-2"><Icon className="h-4 w-4 text-gold" /><p className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">{title}</p></div><div className="space-y-3">{items.map((item, index) => <div key={`${title}-${index}`} className="flex gap-2 text-xs leading-5 text-foreground/85"><span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-gold" /><p>{item}</p></div>)}</div></section>; }
 function DetailRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) { return <div className="min-w-0"><dt className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</dt><dd className={`mt-1 break-words capitalize text-foreground/85 ${mono ? "font-mono text-[10px] normal-case" : ""}`}>{value}</dd></div>; }
 function objectValue(value: unknown): Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
 function stringList(value: unknown): string[] { return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0) : []; }
