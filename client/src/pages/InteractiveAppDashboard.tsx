@@ -1,7 +1,7 @@
 import { useAuth } from "@/contexts/AuthContext";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
-import { Link2, Plus, Wifi } from "lucide-react";
+import { Plus, Wifi } from "lucide-react";
 import {
   fetchDashboardData,
   subscribeToCommandCenter,
@@ -65,12 +65,10 @@ export default function InteractiveAppDashboard() {
     async function loadData(initialLoad = false) {
       if (initialLoad) setLoading(true);
       else setRefreshing(true);
-
       const [dashboardData, connCounts] = await Promise.all([
         fetchDashboardData(orgId),
         fetchConnectionCounts(orgId),
       ]);
-
       if (cancelled) return;
       setSpecialists(dashboardData.specialists);
       setWorkflowCounts(dashboardData.workflowCounts);
@@ -119,11 +117,7 @@ export default function InteractiveAppDashboard() {
   const handleOpenActivity = async (item: ActivityLog) => {
     const executionId = typeof item.metadata?.execution_id === "string" ? item.metadata.execution_id : "";
     if (!executionId) return;
-    await loadExecutionDetail(
-      executionId,
-      item.title || item.message || "Workflow activity",
-      item.digital_specialist_id ? specialistNameById[item.digital_specialist_id] : undefined,
-    );
+    await loadExecutionDetail(executionId, item.title || item.message || "Workflow activity", item.digital_specialist_id ? specialistNameById[item.digital_specialist_id] : undefined);
   };
 
   const handleOpenSpecialist = async (specialist: DigitalSpecialist) => {
@@ -183,83 +177,31 @@ export default function InteractiveAppDashboard() {
     await signOut();
   };
 
-  const userName = profile?.first_name
-    ? `${profile.first_name}${profile.last_name ? ` ${profile.last_name}` : ""}`
-    : user?.email || "User";
+  const userName = profile?.first_name ? `${profile.first_name}${profile.last_name ? ` ${profile.last_name}` : ""}` : user?.email || "User";
   const firstName = profile?.first_name || "Operator";
   const executionDetailOpen = executionDetailLoading || !!selectedExecution || !!executionDetailError;
   const canManageLifecycle = ["owner", "admin"].includes((orgRole || "").toLowerCase());
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b border-subtle bg-background/95 sticky top-0 z-50 shadow-[0_8px_30px_rgba(0,0,0,0.08)]">
-        <div className="container flex items-center justify-between h-[64px]">
+      <header className="sticky top-0 z-50 border-b border-subtle bg-background/95 shadow-[0_8px_30px_rgba(0,0,0,0.08)]">
+        <div className="container flex h-[64px] items-center justify-between">
           <div className="flex items-center gap-4">
             <Link href="/"><img src="/assets/upshot-theory-logo.png" alt="Upshot Theory" className="h-10 w-auto" /></Link>
-            <div className="hidden sm:flex items-center gap-2 ml-4">
-              <span className="text-[10px] font-mono text-muted-foreground tracking-wider uppercase">Command Center</span>
-              <span className="w-1.5 h-1.5 rounded-full bg-[oklch(0.75_0.18_155)] animate-pulse" />
-            </div>
-            <nav className="hidden md:flex items-center gap-4 ml-6">
-              <Link href="/app" className="text-xs font-medium text-foreground">Command Center</Link>
-              <Link href="/app/connections" className="text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">Business Systems</Link>
-            </nav>
+            <div className="ml-4 hidden items-center gap-2 sm:flex"><span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Command Center</span><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[oklch(0.75_0.18_155)]" /></div>
+            <nav className="ml-6 hidden items-center gap-4 md:flex"><Link href="/app" className="text-xs font-medium text-foreground">Command Center</Link><Link href="/app/connections" className="text-xs font-medium text-muted-foreground transition-colors hover:text-foreground">Business Systems</Link></nav>
           </div>
-          <div className="flex items-center gap-4">
-            <div className="text-right hidden sm:block">
-              <p className="text-xs font-medium">{userName}</p>
-              <p className="text-[10px] text-muted-foreground">{organization?.name || "No organization"}</p>
-            </div>
-            <button onClick={handleSignOut} disabled={signingOut} className="px-3 py-1.5 rounded-lg border border-subtle text-xs font-medium text-muted-foreground hover:text-foreground hover:border-foreground/20 transition-all">
-              {signingOut ? "..." : "Sign Out"}
-            </button>
-          </div>
+          <div className="flex items-center gap-4"><div className="hidden text-right sm:block"><p className="text-xs font-medium">{userName}</p><p className="text-[10px] text-muted-foreground">{organization?.name || "No organization"}</p></div><button onClick={handleSignOut} disabled={signingOut} className="rounded-lg border border-subtle px-3 py-1.5 text-xs font-medium text-muted-foreground transition-all hover:border-foreground/20 hover:text-foreground">{signingOut ? "..." : "Sign Out"}</button></div>
         </div>
       </header>
 
       <main className="container py-8 lg:py-12">
-        <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between mb-8">
-          <div>
-            <span className="text-[10px] font-mono text-gold tracking-wider uppercase">// Command Center</span>
-            <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight mt-1">Good to see you, {firstName}.</h1>
-            <p className="text-sm text-muted-foreground mt-1">Your digital workforce is online and reporting live operational activity.</p>
-            <div className="flex items-center gap-2 mt-3 text-[10px] font-mono text-muted-foreground">
-              <Wifi className="w-3 h-3 text-[oklch(0.75_0.18_155)]" />
-              <span>Live</span><span>·</span>
-              <span>{refreshing ? "Syncing changes..." : lastSyncedAt ? `Synced ${lastSyncedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Connecting..."}</span>
-            </div>
-          </div>
-          <Link href="/app/deploy" className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-semibold text-sm text-[#1a1000] transition-all duration-150 hover:shadow-[0_0_20px_oklch(0.65_0.14_75/30%)] active:scale-[0.97]" style={{ backgroundColor: "oklch(0.65 0.14 75)" }}>
-            <Plus className="w-4 h-4" /> Hire Specialist
-          </Link>
+        <div className="mb-8 flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+          <div><span className="text-[10px] font-mono uppercase tracking-wider text-gold">// Command Center</span><h1 className="mt-1 font-display text-2xl font-bold tracking-tight sm:text-3xl">Good to see you, {firstName}.</h1><p className="mt-1 text-sm text-muted-foreground">Your digital workforce is online and reporting live operational activity.</p><div className="mt-3 flex items-center gap-2 text-[10px] font-mono text-muted-foreground"><Wifi className="h-3 w-3 text-[oklch(0.75_0.18_155)]" /><span>Live</span><span>·</span><span>{refreshing ? "Syncing changes..." : lastSyncedAt ? `Synced ${lastSyncedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Connecting..."}</span></div></div>
+          <Link href="/app/deploy" className="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold text-[#1a1000] transition-all duration-150 hover:shadow-[0_0_20px_oklch(0.65_0.14_75/30%)] active:scale-[0.97]" style={{ backgroundColor: "oklch(0.65 0.14 75)" }}><Plus className="h-4 w-4" /> Hire Specialist</Link>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
-          <MetricCard label="Specialists Online" value={metrics.activeSpecialists.toString()} />
-          <MetricCard label="Jobs Completed Today" value={metrics.successfulExecutionsToday.toString()} />
-          <MetricCard label="Success Rate" value={`${metrics.successRateToday}%`} />
-          <MetricCard label="Active Capabilities" value={metrics.deployedWorkflows.toString()} />
-          <MetricCard label="Needs Review" value={metrics.needsHumanReview.toString()} highlight={metrics.needsHumanReview > 0} />
-        </div>
-
-        {dataErrors.length > 0 && (
-          <div className="rounded-xl border border-[oklch(0.62_0.22_25/40%)] bg-[oklch(0.62_0.22_25/8%)] p-4 mb-6">
-            <p className="text-xs font-semibold text-[oklch(0.75_0.18_25)] mb-1">Some live data could not be loaded</p>
-            {dataErrors.map(error => <p key={error} className="text-[11px] text-muted-foreground">{error}</p>)}
-          </div>
-        )}
-
-        <div className="rounded-2xl border border-subtle bg-surface p-5 mb-8">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2"><Link2 className="w-4 h-4 text-gold" /><span className="text-[10px] font-mono text-muted-foreground tracking-wider uppercase">Business Systems</span></div>
-            <Link href="/app/connections" className="text-[11px] font-medium text-gold hover:underline">Manage Systems →</Link>
-          </div>
-          <div className="grid grid-cols-3 gap-4">
-            <MiniMetric label="Connected" value={connectionCounts.connected} />
-            <MiniMetric label="Selected" value={connectionCounts.selected} />
-            <MiniMetric label="Attention Required" value={connectionCounts.attentionRequired} alert={connectionCounts.attentionRequired > 0} />
-          </div>
-        </div>
+        {dataErrors.length > 0 && <div className="mb-6 rounded-xl border border-[oklch(0.62_0.22_25/40%)] bg-[oklch(0.62_0.22_25/8%)] p-4"><p className="mb-1 text-xs font-semibold text-[oklch(0.75_0.18_25)]">Some live data could not be loaded</p>{dataErrors.map(error => <p key={error} className="text-[11px] text-muted-foreground">{error}</p>)}</div>}
 
         <CommandCenterWorkforce
           loading={loading}
@@ -269,44 +211,14 @@ export default function InteractiveAppDashboard() {
           recentActivity={recentActivity}
           specialistNameById={specialistNameById}
           metrics={metrics}
+          connectionCounts={connectionCounts}
           onOpenActivity={handleOpenActivity}
           onOpenSpecialist={handleOpenSpecialist}
         />
       </main>
 
-      {selectedSpecialist && (
-        <SpecialistDetailModal
-          specialist={selectedSpecialist}
-          operationalSummary={specialistSummaries[selectedSpecialist.id]}
-          detail={specialistDetail}
-          loading={specialistDetailLoading}
-          canManageLifecycle={canManageLifecycle}
-          lifecycleLoading={lifecycleLoading}
-          lifecycleError={lifecycleError}
-          onClose={handleCloseSpecialistDetail}
-          onOpenJob={handleOpenSpecialistJob}
-          onLifecycleAction={handleLifecycleAction}
-        />
-      )}
-
-      {executionDetailOpen && (
-        <ExecutionDetailModal
-          detail={selectedExecution}
-          loading={executionDetailLoading}
-          error={executionDetailError}
-          activityTitle={selectedActivityTitle}
-          specialistName={selectedExecutionSpecialistName}
-          onClose={handleCloseExecutionDetail}
-        />
-      )}
+      {selectedSpecialist && <SpecialistDetailModal specialist={selectedSpecialist} operationalSummary={specialistSummaries[selectedSpecialist.id]} detail={specialistDetail} loading={specialistDetailLoading} canManageLifecycle={canManageLifecycle} lifecycleLoading={lifecycleLoading} lifecycleError={lifecycleError} onClose={handleCloseSpecialistDetail} onOpenJob={handleOpenSpecialistJob} onLifecycleAction={handleLifecycleAction} />}
+      {executionDetailOpen && <ExecutionDetailModal detail={selectedExecution} loading={executionDetailLoading} error={executionDetailError} activityTitle={selectedActivityTitle} specialistName={selectedExecutionSpecialistName} onClose={handleCloseExecutionDetail} />}
     </div>
   );
-}
-
-function MetricCard({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
-  return <div className={`rounded-xl border bg-surface p-5 ${highlight ? "border-[oklch(0.62_0.22_25/40%)]" : "border-subtle"}`}><p className="text-[10px] font-mono text-muted-foreground tracking-wider uppercase mb-2">{label}</p><span className={`text-2xl font-mono font-bold ${highlight ? "text-[oklch(0.75_0.18_25)]" : ""}`}>{value}</span></div>;
-}
-
-function MiniMetric({ label, value, alert }: { label: string; value: number; alert?: boolean }) {
-  return <div><p className={`text-lg font-mono font-bold ${alert ? "text-[oklch(0.75_0.18_25)]" : ""}`}>{value}</p><p className="text-[10px] text-muted-foreground">{label}</p></div>;
 }
