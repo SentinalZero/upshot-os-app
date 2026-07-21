@@ -1,4 +1,4 @@
-type SupabaseAdmin = ReturnType<typeof import("./supabase-admin.ts").getSupabaseAdmin>;
+type SupabaseAdmin = any;
 
 export interface BillingGuardResult {
   allowed: boolean;
