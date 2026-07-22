@@ -1,6 +1,6 @@
 import { Link } from "wouter";
 import { Activity, AlertTriangle, CheckCircle2, ChevronRight, Clock3, Link2, Plus, Radar, Rocket, ShieldCheck, Sparkles } from "lucide-react";
-import type { ActivityLog, DashboardMetrics, DigitalSpecialist, SpecialistOperationalSummary, WorkforceState } from "@/lib/supabaseService";
+import type { ActivityLog, CommandDecision, DashboardMetrics, DigitalSpecialist, SpecialistOperationalSummary, WorkforceState } from "@/lib/supabaseService";
 import type { ConnectionCounts } from "@/lib/connectionsService";
 import { buildAttentionQueue } from "@/lib/attentionQueueService";
 import { AttentionQueuePanel } from "@/components/AttentionQueuePanel";
@@ -11,6 +11,7 @@ interface CommandCenterWorkforceProps {
   workflowCounts: Record<string, number>;
   specialistSummaries: Record<string, SpecialistOperationalSummary>;
   recentActivity: ActivityLog[];
+  openDecisions: CommandDecision[];
   specialistNameById: Record<string, string>;
   metrics: DashboardMetrics;
   connectionCounts: ConnectionCounts;
@@ -18,13 +19,13 @@ interface CommandCenterWorkforceProps {
   onOpenSpecialist: (specialist: DigitalSpecialist) => void;
 }
 
-export function CommandCenterWorkforce({ loading, specialists, workflowCounts, specialistSummaries, recentActivity, specialistNameById, metrics, connectionCounts, onOpenActivity, onOpenSpecialist }: CommandCenterWorkforceProps) {
+export function CommandCenterWorkforce({ loading, specialists, workflowCounts, specialistSummaries, recentActivity, openDecisions, specialistNameById, metrics, connectionCounts, onOpenActivity, onOpenSpecialist }: CommandCenterWorkforceProps) {
   if (loading) return <div className="flex items-center justify-center py-16"><div className="flex flex-col items-center gap-3"><div className="h-6 w-6 animate-spin rounded-full border-2 border-gold border-t-transparent" /><p className="text-xs font-mono text-muted-foreground">Bringing your workforce online...</p></div></div>;
 
   const reviewCount = specialists.reduce((total, specialist) => total + (specialistSummaries[specialist.id]?.needsReview || 0), 0);
   const capabilityCount = Object.values(workflowCounts).reduce((total, count) => total + count, 0);
   const workingCount = specialists.filter(specialist => specialistSummaries[specialist.id]?.state === "working").length;
-  const attentionItems = buildAttentionQueue(recentActivity);
+  const attentionItems = buildAttentionQueue(openDecisions);
 
   return (
     <div className="space-y-6">
