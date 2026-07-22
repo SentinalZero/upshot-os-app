@@ -36,6 +36,22 @@ export interface WorkflowExecution {
   completed_at: string | null;
 }
 
+export interface CommandDecision {
+  id: string;
+  organization_id: string;
+  specialist_id: string | null;
+  workflow_execution_id: string | null;
+  category: "approval" | "exception" | "recommendation" | "risk";
+  status: "open" | "in_review";
+  urgency: "critical" | "high" | "normal" | "low";
+  title: string;
+  summary: string;
+  business_impact: string;
+  recommended_action: string;
+  requested_decision: string;
+  created_at: string;
+}
+
 export type WorkforceState = "working" | "idle" | "needs_review" | "failed" | "offline";
 
 export interface SpecialistOperationalSummary {
@@ -64,6 +80,7 @@ export interface DashboardData {
   workflowCounts: Record<string, number>;
   specialistSummaries: Record<string, SpecialistOperationalSummary>;
   recentActivity: ActivityLog[];
+  openDecisions: CommandDecision[];
   metrics: DashboardMetrics;
   errors: string[];
 }
@@ -77,12 +94,6 @@ function isActiveSpecialist(specialist: DigitalSpecialist): boolean {
     .filter(Boolean)
     .map(value => String(value).toLowerCase());
   return statuses.some(value => ["active", "running", "deployed"].includes(value));
-}
-
-function requiresReview(activity: ActivityLog): boolean {
-  const severity = activity.severity?.toLowerCase();
-  const metadataValue = activity.metadata?.requires_human_attention;
-  return severity === "warning" || severity === "critical" || metadataValue === true || metadataValue === "true";
 }
 
 function startOfLocalDayIso(): string {
@@ -102,6 +113,7 @@ function buildSpecialistSummaries(
   specialists: DigitalSpecialist[],
   executions: WorkflowExecution[],
   activity: ActivityLog[],
+  openDecisions: CommandDecision[],
 ): Record<string, SpecialistOperationalSummary> {
   const summaries: Record<string, SpecialistOperationalSummary> = {};
 
@@ -110,7 +122,7 @@ function buildSpecialistSummaries(
     const specialistActivity = activity.filter(item => item.digital_specialist_id === specialist.id);
     const completedToday = specialistExecutions.filter(item => completedStatuses.has(String(item.status).toLowerCase())).length;
     const failedToday = specialistExecutions.filter(item => failedStatuses.has(String(item.status).toLowerCase())).length;
-    const reviewItems = specialistActivity.filter(requiresReview);
+    const reviewItems = openDecisions.filter(item => item.specialist_id === specialist.id);
     const latestExecution = specialistExecutions[0];
     const latestActivity = specialistActivity[0];
     const latestStatus = String(latestExecution?.status || "").toLowerCase();
@@ -156,6 +168,7 @@ export async function fetchDashboardData(organizationId: string): Promise<Dashbo
     workflowCounts: {},
     specialistSummaries: {},
     recentActivity: [],
+    openDecisions: [],
     metrics: {
       totalSpecialists: 0,
       activeSpecialists: 0,
@@ -175,7 +188,7 @@ export async function fetchDashboardData(organizationId: string): Promise<Dashbo
 
   const today = startOfLocalDayIso();
 
-  const [specialistsResult, deploymentsResult, executionsResult, activityResult] = await Promise.all([
+  const [specialistsResult, deploymentsResult, executionsResult, activityResult, decisionsResult] = await Promise.all([
     supabase
       .from("digital_specialists")
       .select("id, organization_id, name, role_name, industry_name, status, framework_lifecycle_status, oversight_mode, selected_systems, deployed_at, created_at")
@@ -197,6 +210,13 @@ export async function fetchDashboardData(organizationId: string): Promise<Dashbo
       .eq("organization_id", organizationId)
       .order("created_at", { ascending: false })
       .limit(50),
+    supabase
+      .from("command_decisions")
+      .select("id, organization_id, specialist_id, workflow_execution_id, category, status, urgency, title, summary, business_impact, recommended_action, requested_decision, created_at")
+      .eq("organization_id", organizationId)
+      .in("status", ["open", "in_review"])
+      .order("created_at", { ascending: false })
+      .limit(20),
   ]);
 
   const errors: string[] = [];
@@ -204,11 +224,13 @@ export async function fetchDashboardData(organizationId: string): Promise<Dashbo
   if (deploymentsResult.error) errors.push(`Workflow deployments: ${deploymentsResult.error.message}`);
   if (executionsResult.error) errors.push(`Executions: ${executionsResult.error.message}`);
   if (activityResult.error) errors.push(`Activity: ${activityResult.error.message}`);
+  if (decisionsResult.error) errors.push(`Decisions: ${decisionsResult.error.message}`);
 
   const specialists = (specialistsResult.data || []) as DigitalSpecialist[];
   const deployments = deploymentsResult.data || [];
   const executions = (executionsResult.data || []) as WorkflowExecution[];
   const recentActivity = (activityResult.data || []) as ActivityLog[];
+  const openDecisions = (decisionsResult.data || []) as CommandDecision[];
 
   const workflowCounts: Record<string, number> = {};
   for (const deployment of deployments) {
@@ -224,8 +246,14 @@ export async function fetchDashboardData(organizationId: string): Promise<Dashbo
   return {
     specialists,
     workflowCounts,
-    specialistSummaries: buildSpecialistSummaries(specialists, executions, recentActivity),
+    specialistSummaries: buildSpecialistSummaries(
+      specialists,
+      executions,
+      recentActivity,
+      openDecisions,
+    ),
     recentActivity,
+    openDecisions,
     metrics: {
       totalSpecialists: specialists.length,
       activeSpecialists: specialists.filter(isActiveSpecialist).length,
@@ -234,7 +262,7 @@ export async function fetchDashboardData(organizationId: string): Promise<Dashbo
       successfulExecutionsToday,
       failedExecutionsToday,
       successRateToday: executionsToday > 0 ? Math.round((successfulExecutionsToday / executionsToday) * 1000) / 10 : 0,
-      needsHumanReview: recentActivity.filter(requiresReview).length,
+      needsHumanReview: openDecisions.length,
     },
     errors,
   };
@@ -242,17 +270,19 @@ export async function fetchDashboardData(organizationId: string): Promise<Dashbo
 
 export function subscribeToCommandCenter(organizationId: string, onChange: () => void): () => void {
   if (!supabase) return () => undefined;
+  const client = supabase;
 
-  const channel = supabase
+  const channel = client
     .channel(`command-center:${organizationId}`)
     .on("postgres_changes", { event: "*", schema: "public", table: "digital_specialists", filter: `organization_id=eq.${organizationId}` }, () => onChange())
     .on("postgres_changes", { event: "*", schema: "public", table: "specialist_workflow_deployments", filter: `organization_id=eq.${organizationId}` }, () => onChange())
     .on("postgres_changes", { event: "*", schema: "public", table: "workflow_executions", filter: `organization_id=eq.${organizationId}` }, () => onChange())
     .on("postgres_changes", { event: "*", schema: "public", table: "activity_logs", filter: `organization_id=eq.${organizationId}` }, () => onChange())
+    .on("postgres_changes", { event: "*", schema: "public", table: "command_decisions", filter: `organization_id=eq.${organizationId}` }, () => onChange())
     .subscribe();
 
   return () => {
-    void supabase.removeChannel(channel);
+    void client.removeChannel(channel);
   };
 }
 
