@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, CheckCircle2, ChevronDown, Clock3, ListChecks, MailCheck, X } from "lucide-react";
+import { AlertTriangle, BrainCircuit, CalendarDays, CheckCircle2, ChevronDown, Clock3, ListChecks, MailCheck, ShieldCheck, X } from "lucide-react";
 import type { WorkflowExecutionDetail } from "@/lib/executionDetailService";
 import { DraftReviewActions } from "@/components/DraftReviewActions";
 import { GmailDraftEditor } from "@/components/GmailDraftEditor";
@@ -49,7 +49,7 @@ export function ExecutionDetailModal({ detail, loading, error, activityTitle, sp
   const gmailSentAt = stringValue(metadata.gmail_sent_at);
   const hasGmailDraft = Boolean(gmailDraftId || gmailSubject || gmailRecipients.length > 0 || gmailBody);
   const reviewCandidate = objectValue(metadata.human_review);
-  const storedReview = isReviewRecord(reviewCandidate) ? reviewCandidate : null;
+  const storedReview = isReviewRecord(reviewCandidate) ? reviewCandidate as unknown as WorkflowReviewRecord : null;
   const initialReview = reviewReset ? null : storedReview;
 
   return (
@@ -82,6 +82,19 @@ export function ExecutionDetailModal({ detail, loading, error, activityTitle, sp
               <section className="rounded-xl border border-subtle bg-surface p-5">
                 <p className="mb-2 text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Executive Summary</p>
                 <p className="text-sm leading-7 text-foreground/90">{detail.summary || detail.error_message || "No written summary was recorded for this job."}</p>
+              </section>
+
+              <section className="rounded-xl border border-gold/20 bg-gradient-to-r from-gold/8 via-surface to-background/60 p-5">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div><p className="text-[10px] font-mono uppercase tracking-wider text-gold">Coordinated Execution</p><h3 className="mt-1 text-sm font-semibold">One event moved through the complete operating path</h3></div>
+                  <span className="rounded-full border border-subtle px-2.5 py-1 text-[9px] font-mono text-muted-foreground">Estimated capacity returned: 14 min</span>
+                </div>
+                <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-4">
+                  <ExecutionStep icon={CalendarDays} label="Calendar" detail="Meeting detected" complete />
+                  <ExecutionStep icon={BrainCircuit} label="Intelligence" detail={isFailed ? "Processing failed" : "Outcomes structured"} complete={!isFailed} failed={isFailed} />
+                  <ExecutionStep icon={MailCheck} label="Gmail" detail={hasGmailDraft ? "Draft created" : "No draft created"} complete={hasGmailDraft} />
+                  <ExecutionStep icon={ShieldCheck} label="Oversight" detail={gmailSentAt ? "Approved and sent" : initialReview?.status === "approved" ? "Approved" : initialReview?.status === "changes_requested" ? "Changes requested" : hasGmailDraft ? "Awaiting decision" : "Not required"} complete={Boolean(gmailSentAt || initialReview?.status === "approved")} waiting={hasGmailDraft && !gmailSentAt && initialReview?.status !== "approved"} />
+                </div>
               </section>
 
               {(keyPoints.length > 0 || actionItems.length > 0) && <div className="grid grid-cols-1 gap-4 md:grid-cols-2"><OutputList title="Key Points" items={keyPoints} icon="check" /><OutputList title="Action Items" items={actionItems} icon="action" /></div>}
@@ -128,10 +141,11 @@ function StatusBadge({ status, successful, failed }: { status: string; successfu
 }
 
 function DetailPill({ label }: { label: string }) { return <span className="rounded-full border border-subtle px-3 py-1 text-[10px] font-mono capitalize text-muted-foreground">{label}</span>; }
+function ExecutionStep({ icon: Icon, label, detail, complete, failed, waiting }: { icon: typeof CalendarDays; label: string; detail: string; complete?: boolean; failed?: boolean; waiting?: boolean }) { const color = failed ? "text-[oklch(0.75_0.18_25)]" : waiting ? "text-gold" : complete ? "text-[oklch(0.75_0.18_155)]" : "text-muted-foreground"; return <div className="rounded-lg border border-subtle bg-background/35 p-3"><Icon className={`h-4 w-4 ${color}`} /><p className="mt-3 text-[9px] font-mono uppercase tracking-wider text-muted-foreground">{label}</p><p className="mt-1 text-[11px] font-medium">{detail}</p></div>; }
 function OutputList({ title, items, icon }: { title: string; items: string[]; icon: "check" | "action" }) { const Icon = icon === "check" ? CheckCircle2 : ListChecks; return <section className="rounded-xl border border-subtle bg-surface p-5"><div className="mb-3 flex items-center gap-2"><Icon className="h-4 w-4 text-gold" /><p className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">{title}</p></div><div className="space-y-3">{items.map((item, index) => <div key={`${title}-${index}`} className="flex gap-2 text-xs leading-5 text-foreground/85"><span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-gold" /><p>{item}</p></div>)}</div></section>; }
 function DetailRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) { return <div className="min-w-0"><dt className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</dt><dd className={`mt-1 break-words capitalize text-foreground/85 ${mono ? "font-mono text-[10px] normal-case" : ""}`}>{value}</dd></div>; }
 function objectValue(value: unknown): Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
 function stringList(value: unknown): string[] { return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0) : []; }
 function stringValue(value: unknown): string { return typeof value === "string" ? value.trim() : ""; }
-function isReviewRecord(value: Record<string, unknown>): value is WorkflowReviewRecord { return ["approved", "changes_requested", "dismissed"].includes(String(value.status || "")) && typeof value.reviewed_at === "string" && typeof value.reviewed_by_user_id === "string" && typeof value.reviewed_by_role === "string"; }
+function isReviewRecord(value: Record<string, unknown>): boolean { return ["approved", "changes_requested", "dismissed"].includes(String(value.status || "")) && typeof value.reviewed_at === "string" && typeof value.reviewed_by_user_id === "string" && typeof value.reviewed_by_role === "string"; }
 function formatDateTime(value?: string | null): string { if (!value) return "Not recorded"; const date = new Date(value); if (Number.isNaN(date.getTime())) return "Not recorded"; return date.toLocaleString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }); }
