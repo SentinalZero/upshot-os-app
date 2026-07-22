@@ -6,7 +6,6 @@ import {
   fetchDashboardData,
   subscribeToCommandCenter,
   type ActivityLog,
-  type CommandDecision,
   type DashboardMetrics,
   type DigitalSpecialist,
   type SpecialistOperationalSummary,
@@ -37,7 +36,6 @@ export default function InteractiveAppDashboard() {
   const [workflowCounts, setWorkflowCounts] = useState<Record<string, number>>({});
   const [specialistSummaries, setSpecialistSummaries] = useState<Record<string, SpecialistOperationalSummary>>({});
   const [recentActivity, setRecentActivity] = useState<ActivityLog[]>([]);
-  const [openDecisions, setOpenDecisions] = useState<CommandDecision[]>([]);
   const [metrics, setMetrics] = useState<DashboardMetrics>(emptyMetrics);
   const [connectionCounts, setConnectionCounts] = useState<ConnectionCounts>({ connected: 0, selected: 0, attentionRequired: 0 });
   const [loading, setLoading] = useState(true);
@@ -76,7 +74,6 @@ export default function InteractiveAppDashboard() {
       setWorkflowCounts(dashboardData.workflowCounts);
       setSpecialistSummaries(dashboardData.specialistSummaries);
       setRecentActivity(dashboardData.recentActivity);
-      setOpenDecisions(dashboardData.openDecisions);
       setMetrics(dashboardData.metrics);
       setDataErrors(dashboardData.errors);
       setConnectionCounts(connCounts);
@@ -212,7 +209,6 @@ export default function InteractiveAppDashboard() {
           workflowCounts={workflowCounts}
           specialistSummaries={specialistSummaries}
           recentActivity={recentActivity}
-          openDecisions={openDecisions}
           specialistNameById={specialistNameById}
           metrics={metrics}
           connectionCounts={connectionCounts}
