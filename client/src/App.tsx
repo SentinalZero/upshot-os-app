@@ -12,6 +12,7 @@ import Signup from "./pages/Signup";
 import ForgotPassword from "./pages/ForgotPassword";
 import OnboardingOrganization from "./pages/OnboardingOrganization";
 import AppDashboard from "./pages/AppDashboard";
+import Workforce from "./pages/Workforce";
 import DeployV2 from "./pages/DeployV2";
 import Connections from "./pages/Connections";
 import AccountSettings from "./pages/AccountSettings";
@@ -23,46 +24,15 @@ function Router() {
       <Route path={"/login"} component={Login} />
       <Route path={"/signup"} component={Signup} />
       <Route path={"/forgot-password"} component={ForgotPassword} />
-      <Route path={"/onboarding/organization"}>
-        <ProtectedRoute>
-          <OnboardingOrganization />
-        </ProtectedRoute>
-      </Route>
-      <Route path={"/app"}>
-        <ProtectedRoute requireOrg>
-          <AppDashboard />
-        </ProtectedRoute>
-      </Route>
-      <Route path={"/app/deploy"}>
-        <ProtectedRoute requireOrg>
-          <DeployV2 />
-        </ProtectedRoute>
-      </Route>
-      <Route path={"/app/connections"}>
-        <ProtectedRoute requireOrg>
-          <Connections />
-        </ProtectedRoute>
-      </Route>
-      <Route path={"/app/settings/profile"}>
-        <ProtectedRoute requireOrg>
-          <AccountSettings />
-        </ProtectedRoute>
-      </Route>
-      <Route path={"/app/settings/team"}>
-        <ProtectedRoute requireOrg>
-          <AccountSettings />
-        </ProtectedRoute>
-      </Route>
-      <Route path={"/app/settings/organization"}>
-        <ProtectedRoute requireOrg>
-          <AccountSettings />
-        </ProtectedRoute>
-      </Route>
-      <Route path={"/app/settings/billing"}>
-        <ProtectedRoute requireOrg>
-          <AccountSettings />
-        </ProtectedRoute>
-      </Route>
+      <Route path={"/onboarding/organization"}><ProtectedRoute><OnboardingOrganization /></ProtectedRoute></Route>
+      <Route path={"/app/workforce"}><ProtectedRoute requireOrg><Workforce /></ProtectedRoute></Route>
+      <Route path={"/app"}><ProtectedRoute requireOrg><AppDashboard /></ProtectedRoute></Route>
+      <Route path={"/app/deploy"}><ProtectedRoute requireOrg><DeployV2 /></ProtectedRoute></Route>
+      <Route path={"/app/connections"}><ProtectedRoute requireOrg><Connections /></ProtectedRoute></Route>
+      <Route path={"/app/settings/profile"}><ProtectedRoute requireOrg><AccountSettings /></ProtectedRoute></Route>
+      <Route path={"/app/settings/team"}><ProtectedRoute requireOrg><AccountSettings /></ProtectedRoute></Route>
+      <Route path={"/app/settings/organization"}><ProtectedRoute requireOrg><AccountSettings /></ProtectedRoute></Route>
+      <Route path={"/app/settings/billing"}><ProtectedRoute requireOrg><AccountSettings /></ProtectedRoute></Route>
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />
     </Switch>
