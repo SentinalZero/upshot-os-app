@@ -93,9 +93,10 @@ export default function DeployV2() {
 
   useEffect(() => {
     if (!supabase || !deployedSpecialistId || !profile?.active_organization_id) return;
+    const client = supabase;
 
     void loadActualImpact(deployedSpecialistId);
-    const channel = supabase
+    const channel = client
       .channel(`deployment-roi:${deployedSpecialistId}`)
       .on(
         "postgres_changes",
@@ -113,7 +114,7 @@ export default function DeployV2() {
       .subscribe();
 
     return () => {
-      void supabase.removeChannel(channel);
+      void client.removeChannel(channel);
     };
   }, [deployedSpecialistId, loadActualImpact, profile?.active_organization_id]);
 
