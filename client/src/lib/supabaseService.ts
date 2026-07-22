@@ -242,8 +242,9 @@ export async function fetchDashboardData(organizationId: string): Promise<Dashbo
 
 export function subscribeToCommandCenter(organizationId: string, onChange: () => void): () => void {
   if (!supabase) return () => undefined;
+  const client = supabase;
 
-  const channel = supabase
+  const channel = client
     .channel(`command-center:${organizationId}`)
     .on("postgres_changes", { event: "*", schema: "public", table: "digital_specialists", filter: `organization_id=eq.${organizationId}` }, () => onChange())
     .on("postgres_changes", { event: "*", schema: "public", table: "specialist_workflow_deployments", filter: `organization_id=eq.${organizationId}` }, () => onChange())
@@ -252,7 +253,7 @@ export function subscribeToCommandCenter(organizationId: string, onChange: () =>
     .subscribe();
 
   return () => {
-    void supabase.removeChannel(channel);
+    void client.removeChannel(channel);
   };
 }
 

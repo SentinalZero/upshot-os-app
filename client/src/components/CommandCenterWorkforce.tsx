@@ -24,7 +24,7 @@ export function CommandCenterWorkforce({ loading, specialists, workflowCounts, s
   const reviewCount = specialists.reduce((total, specialist) => total + (specialistSummaries[specialist.id]?.needsReview || 0), 0);
   const capabilityCount = Object.values(workflowCounts).reduce((total, count) => total + count, 0);
   const workingCount = specialists.filter(specialist => specialistSummaries[specialist.id]?.state === "working").length;
-  const openDecisionContext = onOpenExecution || ((executionId: string, title: string) => onOpenActivity({ id: `decision-${executionId}`, title, metadata: { execution_id: executionId } } as ActivityLog));
+  const openDecisionContext = onOpenExecution || ((executionId: string, title: string) => onOpenActivity({ id: `decision-${executionId}`, title, metadata: { execution_id: executionId } } as unknown as ActivityLog));
 
   return (
     <div className="space-y-6">

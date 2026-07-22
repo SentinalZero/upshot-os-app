@@ -130,6 +130,25 @@ serve(async (req) => {
 
     if (updateError) throw new Error(`Could not save review: ${updateError.message}`);
 
+    const decisionStatus = action === "approve" ? "approved" : action === "request_changes" ? "in_review" : "rejected";
+    const { error: decisionError } = await admin
+      .from("command_decisions")
+      .update({
+        status: decisionStatus,
+        resolution_note: note || null,
+        metadata: {
+          review_status: reviewStatus,
+          reviewed_by_role: requesterRole,
+          email_mode: emailMode,
+        },
+      })
+      .eq("organization_id", organizationId)
+      .eq("workflow_execution_id", executionId)
+      .eq("category", "approval")
+      .in("status", ["open", "in_review"]);
+
+    if (decisionError) console.error("[review-workflow-output] command decision update error", decisionError.message);
+
     const { error: activityError } = await admin.from("activity_logs").insert({
       organization_id: organizationId,
       digital_specialist_id: execution.specialist_id || null,

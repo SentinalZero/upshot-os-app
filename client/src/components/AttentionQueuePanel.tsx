@@ -25,10 +25,11 @@ export function AttentionQueuePanel({ specialistNameById, onOpenExecution }: Att
 
   useEffect(() => {
     if (!organizationId) return;
+    const activeOrganizationId = organizationId;
     let cancelled = false;
 
     async function load() {
-      const result = await fetchActiveCommandDecisions(organizationId);
+      const result = await fetchActiveCommandDecisions(activeOrganizationId);
       if (cancelled) return;
       setItems(result.data);
       setError(result.error);
@@ -36,7 +37,7 @@ export function AttentionQueuePanel({ specialistNameById, onOpenExecution }: Att
     }
 
     void load();
-    const unsubscribe = subscribeToCommandDecisions(organizationId, () => void load());
+    const unsubscribe = subscribeToCommandDecisions(activeOrganizationId, () => void load());
     return () => {
       cancelled = true;
       unsubscribe();

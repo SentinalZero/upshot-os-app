@@ -80,8 +80,9 @@ export async function updateCommandDecision(
 
 export function subscribeToCommandDecisions(organizationId: string, onChange: () => void): () => void {
   if (!supabase) return () => undefined;
+  const client = supabase;
 
-  const channel = supabase
+  const channel = client
     .channel(`command-decisions-${organizationId}`)
     .on(
       "postgres_changes",
@@ -91,6 +92,6 @@ export function subscribeToCommandDecisions(organizationId: string, onChange: ()
     .subscribe();
 
   return () => {
-    void supabase.removeChannel(channel);
+    void client.removeChannel(channel);
   };
 }
