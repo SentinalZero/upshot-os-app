@@ -1,4 +1,4 @@
-import type { ActivityLog, CommandDecision } from "@/lib/supabaseService";
+import type { ActivityLog } from "@/lib/supabaseService";
 
 export type AttentionCategory = "approval" | "exception" | "recommendation" | "risk";
 
@@ -11,41 +11,48 @@ export interface AttentionQueueItem {
   recommendedAction: string;
 }
 
-export function buildAttentionQueue(decisions: CommandDecision[]): AttentionQueueItem[] {
-  return decisions
-    .map(decisionToQueueItem)
+export function buildAttentionQueue(activity: ActivityLog[]): AttentionQueueItem[] {
+  return activity
+    .filter(item => {
+      const severity = item.severity?.toLowerCase();
+      return severity === "warning"
+        || severity === "critical"
+        || item.metadata?.requires_human_attention === true
+        || item.metadata?.requires_human_attention === "true";
+    })
+    .map(classifyAttentionItem)
     .sort((left, right) => urgencyRank(right.urgency) - urgencyRank(left.urgency))
     .slice(0, 8);
 }
 
-function decisionToQueueItem(decision: CommandDecision): AttentionQueueItem {
-  const urgency = decision.urgency === "critical" ? "critical" : decision.urgency === "high" ? "high" : "standard";
-  const activity: ActivityLog = {
-    id: decision.id,
-    organization_id: decision.organization_id,
-    digital_specialist_id: decision.specialist_id,
-    event_type: "command_decision",
-    activity_type: `decision_${decision.category}`,
-    title: decision.title,
-    description: decision.summary,
-    message: decision.summary,
-    severity: decision.urgency === "critical" ? "critical" : decision.urgency === "high" ? "warning" : "info",
-    metadata: {
-      execution_id: decision.workflow_execution_id,
-      decision_id: decision.id,
-      decision_status: decision.status,
-    },
-    created_at: decision.created_at,
-  };
+function classifyAttentionItem(activity: ActivityLog): AttentionQueueItem {
+  const metadata = activity.metadata || {};
+  const searchable = `${activity.title || ""} ${activity.description || ""} ${activity.message || ""} ${activity.activity_type || ""} ${activity.event_type || ""}`.toLowerCase();
+  const explicitCategory = typeof metadata.attention_category === "string" ? metadata.attention_category.toLowerCase() : "";
+
+  const category: AttentionCategory = explicitCategory === "approval" || searchable.includes("approv") || searchable.includes("review draft")
+    ? "approval"
+    : explicitCategory === "risk" || searchable.includes("risk") || searchable.includes("stalled") || searchable.includes("overdue")
+      ? "risk"
+      : explicitCategory === "recommendation" || searchable.includes("recommend") || searchable.includes("suggest")
+        ? "recommendation"
+        : "exception";
+
+  const severity = activity.severity?.toLowerCase();
+  const urgency = severity === "critical" ? "critical" : severity === "warning" ? "high" : "standard";
 
   return {
     activity,
-    category: decision.category,
+    category,
     urgency,
-    businessImpact: decision.business_impact || defaultImpact(decision.category),
-    requestedDecision: decision.requested_decision || defaultDecision(decision.category),
-    recommendedAction: decision.recommended_action || defaultRecommendation(decision.category),
+    businessImpact: metadataText(metadata.business_impact) || defaultImpact(category),
+    requestedDecision: metadataText(metadata.requested_decision) || defaultDecision(category),
+    recommendedAction: metadataText(metadata.recommended_action) || defaultRecommendation(category),
   };
+}
+
+function metadataText(value: unknown): string {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : "";
 }
 
 function defaultImpact(category: AttentionCategory): string {
