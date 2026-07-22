@@ -10,7 +10,9 @@ export interface GmailDraftSendResult {
 
 export async function sendApprovedGmailDraft(organizationId: string, executionId: string): Promise<GmailDraftSendResult> {
   try {
-    const { data, error } = await supabase.functions.invoke("send-approved-gmail-draft", {
+    if (!supabase) return { success: false, error: "Supabase is not configured." };
+    const client = supabase;
+    const { data, error } = await client.functions.invoke("send-approved-gmail-draft", {
       body: { organization_id: organizationId, execution_id: executionId },
     });
     if (error) return { success: false, error: error.message || "The approved email could not be sent." };
