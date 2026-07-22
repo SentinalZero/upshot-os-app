@@ -14,7 +14,7 @@ interface CommandCenterWorkforceProps {
   metrics: DashboardMetrics;
   connectionCounts: ConnectionCounts;
   onOpenActivity: (item: ActivityLog) => void;
-  onOpenExecution: (executionId: string, title: string, specialistName?: string) => void;
+  onOpenExecution?: (executionId: string, title: string, specialistName?: string) => void;
   onOpenSpecialist: (specialist: DigitalSpecialist) => void;
 }
 
@@ -24,6 +24,7 @@ export function CommandCenterWorkforce({ loading, specialists, workflowCounts, s
   const reviewCount = specialists.reduce((total, specialist) => total + (specialistSummaries[specialist.id]?.needsReview || 0), 0);
   const capabilityCount = Object.values(workflowCounts).reduce((total, count) => total + count, 0);
   const workingCount = specialists.filter(specialist => specialistSummaries[specialist.id]?.state === "working").length;
+  const openDecisionContext = onOpenExecution || ((executionId: string, title: string) => onOpenActivity({ id: `decision-${executionId}`, title, metadata: { execution_id: executionId } } as ActivityLog));
 
   return (
     <div className="space-y-6">
@@ -40,7 +41,7 @@ export function CommandCenterWorkforce({ loading, specialists, workflowCounts, s
         </div>
       </section>
 
-      <AttentionQueuePanel specialistNameById={specialistNameById} onOpenExecution={onOpenExecution} />
+      <AttentionQueuePanel specialistNameById={specialistNameById} onOpenExecution={openDecisionContext} />
 
       <div className="grid grid-cols-1 items-start gap-8 xl:grid-cols-[1.35fr_0.85fr]">
         <section className="overflow-hidden rounded-2xl border border-subtle bg-surface">
