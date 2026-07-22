@@ -38,6 +38,19 @@ create index if not exists command_decisions_active_queue_idx
 create index if not exists command_decisions_specialist_idx
   on public.command_decisions (specialist_id, status, created_at desc);
 
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'command_decisions'
+  ) then
+    alter publication supabase_realtime add table public.command_decisions;
+  end if;
+end
+$$;
+
 create unique index if not exists command_decisions_source_activity_unique_idx
   on public.command_decisions (source_activity_log_id)
   where source_activity_log_id is not null;
