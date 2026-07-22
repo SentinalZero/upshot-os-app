@@ -204,15 +204,44 @@ serve(async (req) => {
       .eq("id", executionId).eq("organization_id", organizationId);
     if (updateError) return respond({ error: `Draft was created but metadata could not be stored: ${updateError.message}` }, 500);
 
-    await admin.from("activity_logs").insert({
+    const { data: reviewActivity, error: reviewActivityError } = await admin.from("activity_logs").insert({
       organization_id: organizationId,
       digital_specialist_id: execution.specialist_id,
       activity_type: "gmail_draft_created",
-      title: "Follow up email drafted",
-      description: `A Gmail draft was prepared for ${recipients.join(", ")}.`,
-      severity: "success",
-      metadata: { execution_id: executionId, draft_id: draftPayload.id, recipients, subject },
-    });
+      title: "Follow up email ready for approval",
+      description: `A Gmail draft was prepared for ${recipients.join(", ")} and paused for human review.`,
+      severity: "warning",
+      metadata: {
+        execution_id: executionId,
+        draft_id: draftPayload.id,
+        recipients,
+        subject,
+        requires_human_attention: true,
+        attention_category: "approval",
+      },
+    }).select("id").single();
+
+    if (reviewActivityError) {
+      console.error("[create-google-gmail-draft] review activity insert failed", reviewActivityError.message);
+    } else {
+      const { error: decisionError } = await admin.from("command_decisions").insert({
+        organization_id: organizationId,
+        specialist_id: execution.specialist_id,
+        workflow_execution_id: executionId,
+        source_activity_log_id: reviewActivity.id,
+        category: "approval",
+        status: "open",
+        urgency: "normal",
+        title: "Approve customer follow up",
+        summary: `Review the prepared Gmail draft for ${recipients.join(", ")} before it is sent.`,
+        business_impact: "Customer follow up is paused until an authorized person confirms the message.",
+        recommended_action: "Verify the commitments, recipients, and tone, then approve or request changes.",
+        requested_decision: "Approve the draft, request changes, or dismiss it.",
+        assigned_role: "owner",
+        metadata: { draft_id: draftPayload.id, recipients, subject },
+      });
+      if (decisionError) console.error("[create-google-gmail-draft] command decision insert failed", decisionError.message);
+    }
 
     return respond({
       execution_id: executionId,
