@@ -2,7 +2,6 @@ import { Link } from "wouter";
 import { Activity, AlertTriangle, CheckCircle2, ChevronRight, Clock3, Link2, Plus, Radar, Rocket, ShieldCheck, Sparkles } from "lucide-react";
 import type { ActivityLog, DashboardMetrics, DigitalSpecialist, SpecialistOperationalSummary, WorkforceState } from "@/lib/supabaseService";
 import type { ConnectionCounts } from "@/lib/connectionsService";
-import { buildAttentionQueue } from "@/lib/attentionQueueService";
 import { AttentionQueuePanel } from "@/components/AttentionQueuePanel";
 
 interface CommandCenterWorkforceProps {
@@ -15,16 +14,17 @@ interface CommandCenterWorkforceProps {
   metrics: DashboardMetrics;
   connectionCounts: ConnectionCounts;
   onOpenActivity: (item: ActivityLog) => void;
+  onOpenExecution?: (executionId: string, title: string, specialistName?: string) => void;
   onOpenSpecialist: (specialist: DigitalSpecialist) => void;
 }
 
-export function CommandCenterWorkforce({ loading, specialists, workflowCounts, specialistSummaries, recentActivity, specialistNameById, metrics, connectionCounts, onOpenActivity, onOpenSpecialist }: CommandCenterWorkforceProps) {
+export function CommandCenterWorkforce({ loading, specialists, workflowCounts, specialistSummaries, recentActivity, specialistNameById, metrics, connectionCounts, onOpenActivity, onOpenExecution, onOpenSpecialist }: CommandCenterWorkforceProps) {
   if (loading) return <div className="flex items-center justify-center py-16"><div className="flex flex-col items-center gap-3"><div className="h-6 w-6 animate-spin rounded-full border-2 border-gold border-t-transparent" /><p className="text-xs font-mono text-muted-foreground">Bringing your workforce online...</p></div></div>;
 
   const reviewCount = specialists.reduce((total, specialist) => total + (specialistSummaries[specialist.id]?.needsReview || 0), 0);
   const capabilityCount = Object.values(workflowCounts).reduce((total, count) => total + count, 0);
   const workingCount = specialists.filter(specialist => specialistSummaries[specialist.id]?.state === "working").length;
-  const attentionItems = buildAttentionQueue(recentActivity);
+  const openDecisionContext = onOpenExecution || ((executionId: string, title: string) => onOpenActivity({ id: `decision-${executionId}`, title, metadata: { execution_id: executionId } } as ActivityLog));
 
   return (
     <div className="space-y-6">
@@ -41,7 +41,7 @@ export function CommandCenterWorkforce({ loading, specialists, workflowCounts, s
         </div>
       </section>
 
-      <AttentionQueuePanel items={attentionItems} specialistNameById={specialistNameById} onOpen={onOpenActivity} />
+      <AttentionQueuePanel specialistNameById={specialistNameById} onOpenExecution={openDecisionContext} />
 
       <div className="grid grid-cols-1 items-start gap-8 xl:grid-cols-[1.35fr_0.85fr]">
         <section className="overflow-hidden rounded-2xl border border-subtle bg-surface">
