@@ -1,5 +1,4 @@
 import Today from "./Today";
-import { AppUserMenu } from "@/components/AppUserMenu";
 
 export default function AppDashboard() {
   return (
@@ -8,17 +7,8 @@ export default function AppDashboard() {
         .app-dashboard-shell header {
           box-shadow: none !important;
         }
-
-        @media (min-width: 640px) {
-          .app-dashboard-shell header > .container > a:last-child {
-            margin-right: 230px;
-          }
-        }
       `}</style>
       <Today />
-      <div className="fixed right-4 top-2 z-[70] sm:right-6">
-        <AppUserMenu />
-      </div>
     </div>
   );
 }
