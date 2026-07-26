@@ -43,16 +43,15 @@ export function AppShell({ children }: AppShellProps) {
             </nav>
           </div>
 
-          <div className="hidden items-center gap-3 md:flex">
-            <Link href="/app/deploy" className="inline-flex items-center gap-2 rounded-xl bg-gold px-4 py-2.5 text-xs font-semibold text-[#1a1000] transition-transform active:scale-[0.98]">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <Link href="/app/deploy" className="hidden items-center gap-2 rounded-xl bg-gold px-4 py-2.5 text-xs font-semibold text-[#1a1000] transition-transform active:scale-[0.98] md:inline-flex">
               <Plus className="h-4 w-4" /> Hire Specialist
             </Link>
             <AppUserMenu />
+            <button type="button" onClick={() => setMobileOpen(value => !value)} className="grid h-10 w-10 place-items-center rounded-xl border border-subtle bg-surface/60 md:hidden" aria-label="Toggle application navigation" aria-expanded={mobileOpen}>
+              {mobileOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
+            </button>
           </div>
-
-          <button type="button" onClick={() => setMobileOpen(value => !value)} className="grid h-10 w-10 place-items-center rounded-xl border border-subtle bg-surface/60 md:hidden" aria-label="Toggle application navigation" aria-expanded={mobileOpen}>
-            {mobileOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
-          </button>
         </div>
 
         {mobileOpen && (
@@ -66,7 +65,6 @@ export function AppShell({ children }: AppShellProps) {
               <Link href="/app/deploy" onClick={() => setMobileOpen(false)} className="flex items-center justify-center gap-2 rounded-xl bg-gold px-4 py-3 text-sm font-semibold text-[#1a1000]">
                 <Plus className="h-4 w-4" /> Hire Specialist
               </Link>
-              <div className="pt-2"><AppUserMenu /></div>
             </div>
           </div>
         )}
