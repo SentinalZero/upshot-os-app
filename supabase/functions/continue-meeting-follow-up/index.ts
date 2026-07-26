@@ -1,6 +1,81 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
-import { decryptToken, encryptToken } from "../_shared/crypto.ts";
-import { getSupabaseAdmin } from "../_shared/supabase-admin.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const ALGORITHM = "AES-GCM";
+const IV_LENGTH = 12;
+const TAG_LENGTH = 128;
+
+function getSupabaseAdmin() {
+  const url = Deno.env.get("SUPABASE_URL");
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!url || !serviceRoleKey) {
+    throw new Error("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set");
+  }
+  return createClient(url, serviceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+}
+
+function hexToBytes(hex: string): Uint8Array {
+  const clean = hex.replace(/\s/g, "");
+  const bytes = new Uint8Array(clean.length / 2);
+  for (let index = 0; index < bytes.length; index++) {
+    bytes[index] = Number.parseInt(clean.substring(index * 2, index * 2 + 2), 16);
+  }
+  return bytes;
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+function base64ToBytes(base64: string): Uint8Array {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
+  return bytes;
+}
+
+async function getEncryptionKey(): Promise<CryptoKey> {
+  const keyHex = Deno.env.get("TOKEN_ENCRYPTION_KEY");
+  if (!keyHex) throw new Error("TOKEN_ENCRYPTION_KEY is not configured");
+  const keyBytes = hexToBytes(keyHex);
+  if (keyBytes.length !== 32) {
+    throw new Error("TOKEN_ENCRYPTION_KEY must be exactly 32 bytes (64 hex characters)");
+  }
+  return crypto.subtle.importKey("raw", keyBytes, { name: ALGORITHM }, false, ["encrypt", "decrypt"]);
+}
+
+async function encryptToken(plaintext: string): Promise<string> {
+  const key = await getEncryptionKey();
+  const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH));
+  const encoded = new TextEncoder().encode(plaintext);
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: ALGORITHM, iv, tagLength: TAG_LENGTH },
+    key,
+    encoded,
+  );
+  const combined = new Uint8Array(iv.length + ciphertext.byteLength);
+  combined.set(iv, 0);
+  combined.set(new Uint8Array(ciphertext), iv.length);
+  return bytesToBase64(combined);
+}
+
+async function decryptToken(encryptedBase64: string): Promise<string> {
+  const key = await getEncryptionKey();
+  const combined = base64ToBytes(encryptedBase64);
+  if (combined.length < IV_LENGTH + 16) throw new Error("Encrypted value is invalid");
+  const iv = combined.slice(0, IV_LENGTH);
+  const ciphertext = combined.slice(IV_LENGTH);
+  const decrypted = await crypto.subtle.decrypt(
+    { name: ALGORITHM, iv, tagLength: TAG_LENGTH },
+    key,
+    ciphertext,
+  );
+  return new TextDecoder().decode(decrypted);
+}
 
 interface ContinuationPayload {
   integration_id?: string;
@@ -62,7 +137,6 @@ function buildRawMessage(payload: ContinuationPayload): string {
     'Content-Type: text/plain; charset="UTF-8"',
     "Content-Transfer-Encoding: 8bit",
   ];
-
   return base64UrlEncode(`${headers.join("\r\n")}\r\n\r\n${payload.body || ""}`);
 }
 
