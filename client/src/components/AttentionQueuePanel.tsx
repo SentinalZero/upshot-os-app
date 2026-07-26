@@ -3,8 +3,8 @@ import { AlertTriangle, ArrowRight, CheckCircle2, CircleHelp, Lightbulb, Loader2
 import { useAuth } from "@/contexts/AuthContext";
 import {
   fetchActiveCommandDecisions,
+  resolveCommandDecision,
   subscribeToCommandDecisions,
-  updateCommandDecision,
   type CommandDecision,
   type CommandDecisionCategory,
   type CommandDecisionStatus,
@@ -16,7 +16,7 @@ interface AttentionQueuePanelProps {
 }
 
 export function AttentionQueuePanel({ specialistNameById, onOpenExecution }: AttentionQueuePanelProps) {
-  const { profile } = useAuth();
+  const { user, profile } = useAuth();
   const organizationId = profile?.active_organization_id;
   const [items, setItems] = useState<CommandDecision[]>([]);
   const [loading, setLoading] = useState(true);
@@ -56,13 +56,14 @@ export function AttentionQueuePanel({ specialistNameById, onOpenExecution }: Att
     if (!organizationId) return;
     setUpdatingId(decision.id);
     setError(null);
-    const result = await updateCommandDecision(organizationId, decision.id, status);
+    const result = await resolveCommandDecision(organizationId, decision, status, user?.id);
     setUpdatingId(null);
     if (!result.success) {
-      setError(result.error || "The decision could not be updated.");
+      setError(result.error || "The decision could not be applied to the workflow.");
       return;
     }
     setItems(current => current.filter(item => item.id !== decision.id));
+    if (result.error) setError(result.error);
   };
 
   return (
@@ -156,7 +157,7 @@ function DecisionItem({ item, specialistName, updating, onStatus, onOpenExecutio
         <div className="flex flex-wrap gap-2">
           {item.workflow_execution_id && <button type="button" onClick={() => onOpenExecution(item.workflow_execution_id!, item.title, specialistName)} className="rounded-xl border border-subtle px-3 py-2 text-[10px] font-semibold text-muted-foreground hover:text-foreground">View full context</button>}
           {(item.category === "approval" || item.category === "recommendation") && <button type="button" disabled={updating} onClick={() => onStatus("rejected")} className="rounded-xl border border-[oklch(0.62_0.22_25/30%)] px-3 py-2 text-[10px] font-semibold text-[oklch(0.75_0.18_25)] disabled:opacity-60">Reject</button>}
-          <button type="button" disabled={updating} onClick={() => onStatus(primaryStatus)} className="rounded-xl bg-gold px-4 py-2 text-[10px] font-semibold text-[#1a1000] disabled:opacity-60">{updating ? "Saving decision..." : primaryLabel}</button>
+          <button type="button" disabled={updating} onClick={() => onStatus(primaryStatus)} className="rounded-xl bg-gold px-4 py-2 text-[10px] font-semibold text-[#1a1000] disabled:opacity-60">{updating ? "Applying decision..." : primaryLabel}</button>
         </div>
       </div>
     </article>
@@ -172,10 +173,10 @@ function DecisionBlock({ label, value, emphasized = false }: { label: string; va
 }
 
 function nextStepCopy(category: CommandDecisionCategory, primaryLabel: string): string {
-  if (category === "approval") return `Selecting “${primaryLabel}” releases the Specialist to complete the pending action and record the outcome.`;
-  if (category === "recommendation") return `Selecting “${primaryLabel}” turns the recommendation into an authorized next action for the Specialist.`;
-  if (category === "risk") return `Resolving this item records your judgment and allows the Specialist to continue within the updated risk boundary.`;
-  return `Resolving this exception records your decision and lets the Specialist resume the paused workflow.`;
+  if (category === "approval") return `Selecting “${primaryLabel}” queues the linked workflow to continue and records your authorization.`;
+  if (category === "recommendation") return `Selecting “${primaryLabel}” authorizes the recommendation and queues the linked workflow's next action.`;
+  if (category === "risk") return "Resolving this item records your judgment and queues the linked workflow to continue within the updated risk boundary.";
+  return "Resolving this exception records your decision and queues the paused workflow to resume.";
 }
 
 const categoryConfig: Record<CommandDecisionCategory, { label: string; icon: typeof AlertTriangle; iconClass: string; badgeClass: string }> = {
