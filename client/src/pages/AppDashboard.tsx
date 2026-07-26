@@ -1,4 +1,4 @@
-import InteractiveAppDashboard from "./InteractiveAppDashboard";
+import Today from "./Today";
 import { AppUserMenu } from "@/components/AppUserMenu";
 
 export default function AppDashboard() {
@@ -8,13 +8,8 @@ export default function AppDashboard() {
         .app-dashboard-shell header {
           box-shadow: none !important;
         }
-
-        .app-dashboard-shell header > .container > div:last-child {
-          visibility: hidden;
-          pointer-events: none;
-        }
       `}</style>
-      <InteractiveAppDashboard />
+      <Today />
       <div className="fixed right-4 top-2 z-[70] sm:right-6">
         <AppUserMenu />
       </div>
