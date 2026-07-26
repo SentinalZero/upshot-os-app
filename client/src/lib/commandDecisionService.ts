@@ -78,6 +78,83 @@ export async function updateCommandDecision(
   return error ? { success: false, error: error.message } : { success: true, error: null };
 }
 
+export async function resolveCommandDecision(
+  organizationId: string,
+  decision: CommandDecision,
+  status: CommandDecisionStatus,
+  resolvedBy?: string | null,
+): Promise<{ success: boolean; error: string | null }> {
+  if (!supabase) return { success: false, error: "Supabase is not configured." };
+
+  const resolvedAt = new Date().toISOString();
+  const continuationStatus = status === "rejected" ? "cancelled" : "queued";
+  const originalDecisionStatus = decision.status;
+
+  const decisionUpdates: Record<string, unknown> = {
+    status,
+    resolved_at: resolvedAt,
+    resolved_by: resolvedBy || null,
+    resolution_note: status === "rejected" ? "Rejected by human reviewer." : "Authorized by human reviewer.",
+  };
+
+  const { error: decisionError } = await supabase
+    .from("command_decisions")
+    .update(decisionUpdates)
+    .eq("organization_id", organizationId)
+    .eq("id", decision.id);
+
+  if (decisionError) return { success: false, error: decisionError.message };
+
+  if (decision.workflow_execution_id) {
+    const executionUpdates: Record<string, unknown> = {
+      status: continuationStatus,
+      completed_at: continuationStatus === "cancelled" ? resolvedAt : null,
+    };
+
+    const { error: executionError } = await supabase
+      .from("workflow_executions")
+      .update(executionUpdates)
+      .eq("organization_id", organizationId)
+      .eq("id", decision.workflow_execution_id);
+
+    if (executionError) {
+      await supabase
+        .from("command_decisions")
+        .update({ status: originalDecisionStatus, resolved_at: null, resolved_by: null, resolution_note: decision.resolution_note })
+        .eq("organization_id", organizationId)
+        .eq("id", decision.id);
+      return { success: false, error: `The decision was not applied because the linked workflow could not be updated: ${executionError.message}` };
+    }
+  }
+
+  const actionLabel = status === "rejected" ? "rejected" : status === "approved" ? "approved" : "resolved";
+  const { error: activityError } = await supabase.from("activity_logs").insert({
+    organization_id: organizationId,
+    digital_specialist_id: decision.specialist_id,
+    event_type: "command_decision_resolved",
+    activity_type: "human_oversight",
+    title: `${decision.title} ${actionLabel}`,
+    description: status === "rejected"
+      ? "The reviewer rejected the proposed action and the linked workflow was cancelled."
+      : "The reviewer authorized the next action and the linked workflow was queued to continue.",
+    message: `${decision.category} decision ${actionLabel}`,
+    severity: "info",
+    metadata: {
+      command_decision_id: decision.id,
+      workflow_execution_id: decision.workflow_execution_id,
+      decision_status: status,
+      continuation_status: continuationStatus,
+      resolved_by: resolvedBy || null,
+      requires_human_attention: false,
+    },
+  });
+
+  return {
+    success: true,
+    error: activityError ? `The workflow state was updated, but the audit event could not be written: ${activityError.message}` : null,
+  };
+}
+
 export function subscribeToCommandDecisions(organizationId: string, onChange: () => void): () => void {
   if (!supabase) return () => undefined;
   const client = supabase;
