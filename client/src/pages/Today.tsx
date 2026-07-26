@@ -37,7 +37,7 @@ const emptyMetrics: DashboardMetrics = {
 };
 
 export default function Today() {
-  const { profile, organization } = useAuth();
+  const { user, profile, organization } = useAuth();
   const [specialists, setSpecialists] = useState<DigitalSpecialist[]>([]);
   const [summaries, setSummaries] = useState<Record<string, SpecialistOperationalSummary>>({});
   const [activity, setActivity] = useState<ActivityLog[]>([]);
@@ -45,6 +45,7 @@ export default function Today() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
+  const [currentTime, setCurrentTime] = useState<Date | null>(null);
 
   useEffect(() => {
     if (!profile?.active_organization_id) return;
@@ -78,6 +79,13 @@ export default function Today() {
     };
   }, [profile?.active_organization_id]);
 
+  useEffect(() => {
+    const updateLocalTime = () => setCurrentTime(new Date());
+    updateLocalTime();
+    const interval = window.setInterval(updateLocalTime, 60_000);
+    return () => window.clearInterval(interval);
+  }, []);
+
   const specialistNameById = useMemo(
     () => Object.fromEntries(specialists.map(specialist => [specialist.id, specialist.name])),
     [specialists],
@@ -93,15 +101,16 @@ export default function Today() {
   const minutesReturned = completedItems * MINUTES_RETURNED_PER_COMPLETED_ITEM;
   const hoursReturned = Math.round((minutesReturned / 60) * 10) / 10;
   const estimatedValue = Math.round((minutesReturned / 60) * HOURLY_VALUE);
-  const firstName = profile?.first_name || "there";
+  const emailName = user?.email?.split("@")[0];
+  const firstName = profile?.first_name || (emailName ? `${emailName.charAt(0).toUpperCase()}${emailName.slice(1)}` : "there");
   const recentWork = activity.slice(0, 6);
   const activeCount = specialists.filter(specialist => {
     const state = summaries[specialist.id]?.state;
     return state === "working" || state === "ready";
   }).length;
 
-  const hour = new Date().getHours();
-  const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+  const hour = currentTime?.getHours();
+  const greeting = hour === undefined ? "Welcome back" : hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
   const hasCompletedWork = completedItems > 0;
 
   return (
@@ -115,7 +124,7 @@ export default function Today() {
       </header>
 
       <main className="container py-8 lg:py-12">
-        <section className="mb-8 grid gap-6 lg:grid-cols-[1fr_auto] lg:items-end">
+        <section className="mb-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(280px,420px)] lg:items-end">
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
             <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-gold/20 bg-gold/5 px-3 py-1.5 text-[10px] font-mono uppercase tracking-[0.16em] text-gold">
               <Sparkles className="h-3.5 w-3.5" /> Today
@@ -135,11 +144,25 @@ export default function Today() {
               <span>{lastSyncedAt ? `Updated ${lastSyncedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Connecting..."}</span>
             </div>
           </motion.div>
-          <p className="max-w-sm text-sm leading-6 text-muted-foreground lg:text-right">
-            {metrics.needsHumanReview > 0
-              ? `${metrics.needsHumanReview} item${metrics.needsHumanReview === 1 ? "" : "s"} need your judgment. Everything else keeps moving.`
-              : "Nothing needs your attention right now. Your workforce can keep moving."}
-          </p>
+
+          <motion.aside
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35, delay: 0.06 }}
+            className="rounded-2xl border border-subtle bg-surface/70 p-5 lg:justify-self-end"
+          >
+            <p className="text-[9px] font-mono uppercase tracking-[0.18em] text-gold">Workforce status</p>
+            <p className="mt-2 font-display text-lg font-semibold leading-7 text-foreground">
+              {metrics.needsHumanReview > 0
+                ? `${metrics.needsHumanReview} item${metrics.needsHumanReview === 1 ? "" : "s"} need your judgment.`
+                : "Nothing needs your attention right now."}
+            </p>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              {metrics.needsHumanReview > 0
+                ? "Everything else keeps moving while you review the exception."
+                : "Your workforce is ready to keep work moving as new triggers arrive."}
+            </p>
+          </motion.aside>
         </section>
 
         {loading ? (
