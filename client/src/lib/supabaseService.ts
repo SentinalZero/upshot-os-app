@@ -36,6 +36,12 @@ export interface WorkflowExecution {
   completed_at: string | null;
 }
 
+interface ActiveDecision {
+  id: string;
+  specialist_id: string | null;
+  status: string | null;
+}
+
 export type WorkforceState = "working" | "idle" | "needs_review" | "failed" | "offline";
 
 export interface SpecialistOperationalSummary {
@@ -71,6 +77,12 @@ export interface DashboardData {
 const completedStatuses = new Set(["successful", "success", "completed"]);
 const failedStatuses = new Set(["failed", "error"]);
 const workingStatuses = new Set(["running", "processing", "in_progress", "queued"]);
+const hiddenActivityTypes = new Set([
+  "command_decision_resolved",
+  "workflow_continuation_completed",
+  "workflow_continuation_waiting",
+  "workflow_continuation_failed",
+]);
 
 function isActiveSpecialist(specialist: DigitalSpecialist): boolean {
   const statuses = [specialist.status, specialist.framework_lifecycle_status]
@@ -79,10 +91,18 @@ function isActiveSpecialist(specialist: DigitalSpecialist): boolean {
   return statuses.some(value => ["active", "running", "deployed"].includes(value));
 }
 
-function requiresReview(activity: ActivityLog): boolean {
-  const severity = activity.severity?.toLowerCase();
-  const metadataValue = activity.metadata?.requires_human_attention;
-  return severity === "warning" || severity === "critical" || metadataValue === true || metadataValue === "true";
+function isUserFacingActivity(activity: ActivityLog): boolean {
+  if (hiddenActivityTypes.has(String(activity.event_type || "").toLowerCase())) return false;
+
+  const searchableText = [activity.title, activity.description, activity.message]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  return !searchableText.includes("test workflow")
+    && !searchableText.includes("webhook test")
+    && !searchableText.includes("retry test")
+    && !searchableText.includes("approve test");
 }
 
 function startOfLocalDayIso(): string {
@@ -102,6 +122,7 @@ function buildSpecialistSummaries(
   specialists: DigitalSpecialist[],
   executions: WorkflowExecution[],
   activity: ActivityLog[],
+  activeDecisions: ActiveDecision[],
 ): Record<string, SpecialistOperationalSummary> {
   const summaries: Record<string, SpecialistOperationalSummary> = {};
 
@@ -110,13 +131,13 @@ function buildSpecialistSummaries(
     const specialistActivity = activity.filter(item => item.digital_specialist_id === specialist.id);
     const completedToday = specialistExecutions.filter(item => completedStatuses.has(String(item.status).toLowerCase())).length;
     const failedToday = specialistExecutions.filter(item => failedStatuses.has(String(item.status).toLowerCase())).length;
-    const reviewItems = specialistActivity.filter(requiresReview);
+    const needsReview = activeDecisions.filter(item => item.specialist_id === specialist.id).length;
     const latestExecution = specialistExecutions[0];
     const latestActivity = specialistActivity[0];
     const latestStatus = String(latestExecution?.status || "").toLowerCase();
 
     let state: WorkforceState = "offline";
-    if (reviewItems.length > 0) state = "needs_review";
+    if (needsReview > 0) state = "needs_review";
     else if (workingStatuses.has(latestStatus)) state = "working";
     else if (failedStatuses.has(latestStatus)) state = "failed";
     else if (isActiveSpecialist(specialist)) state = "idle";
@@ -126,8 +147,8 @@ function buildSpecialistSummaries(
       state,
       completedToday,
       failedToday,
-      needsReview: reviewItems.length,
-      currentJob: state === "working" ? getActivityLabel(latestActivity) : state === "needs_review" ? "Waiting for human review" : getActivityLabel(latestActivity),
+      needsReview,
+      currentJob: state === "working" ? getActivityLabel(latestActivity) : state === "needs_review" ? "Waiting for your approval" : getActivityLabel(latestActivity),
       lastActivityAt: latestActivity?.created_at || latestExecution?.completed_at || latestExecution?.created_at || specialist.deployed_at,
     };
   }
@@ -175,7 +196,7 @@ export async function fetchDashboardData(organizationId: string): Promise<Dashbo
 
   const today = startOfLocalDayIso();
 
-  const [specialistsResult, deploymentsResult, executionsResult, activityResult] = await Promise.all([
+  const [specialistsResult, deploymentsResult, executionsResult, activityResult, decisionsResult] = await Promise.all([
     supabase
       .from("digital_specialists")
       .select("id, organization_id, name, role_name, industry_name, status, framework_lifecycle_status, oversight_mode, selected_systems, deployed_at, created_at")
@@ -195,8 +216,14 @@ export async function fetchDashboardData(organizationId: string): Promise<Dashbo
       .from("activity_logs")
       .select("id, organization_id, digital_specialist_id, event_type, activity_type, title, description, message, severity, metadata, created_at")
       .eq("organization_id", organizationId)
+      .gte("created_at", today)
       .order("created_at", { ascending: false })
       .limit(50),
+    supabase
+      .from("command_decisions")
+      .select("id, specialist_id, status")
+      .eq("organization_id", organizationId)
+      .in("status", ["open", "in_review"]),
   ]);
 
   const errors: string[] = [];
@@ -204,11 +231,14 @@ export async function fetchDashboardData(organizationId: string): Promise<Dashbo
   if (deploymentsResult.error) errors.push(`Workflow deployments: ${deploymentsResult.error.message}`);
   if (executionsResult.error) errors.push(`Executions: ${executionsResult.error.message}`);
   if (activityResult.error) errors.push(`Activity: ${activityResult.error.message}`);
+  if (decisionsResult.error) errors.push(`Decisions: ${decisionsResult.error.message}`);
 
   const specialists = (specialistsResult.data || []) as DigitalSpecialist[];
   const deployments = deploymentsResult.data || [];
   const executions = (executionsResult.data || []) as WorkflowExecution[];
-  const recentActivity = (activityResult.data || []) as ActivityLog[];
+  const allActivity = (activityResult.data || []) as ActivityLog[];
+  const recentActivity = allActivity.filter(isUserFacingActivity);
+  const activeDecisions = (decisionsResult.data || []) as ActiveDecision[];
 
   const workflowCounts: Record<string, number> = {};
   for (const deployment of deployments) {
@@ -224,7 +254,7 @@ export async function fetchDashboardData(organizationId: string): Promise<Dashbo
   return {
     specialists,
     workflowCounts,
-    specialistSummaries: buildSpecialistSummaries(specialists, executions, recentActivity),
+    specialistSummaries: buildSpecialistSummaries(specialists, executions, recentActivity, activeDecisions),
     recentActivity,
     metrics: {
       totalSpecialists: specialists.length,
@@ -234,7 +264,7 @@ export async function fetchDashboardData(organizationId: string): Promise<Dashbo
       successfulExecutionsToday,
       failedExecutionsToday,
       successRateToday: executionsToday > 0 ? Math.round((successfulExecutionsToday / executionsToday) * 1000) / 10 : 0,
-      needsHumanReview: recentActivity.filter(requiresReview).length,
+      needsHumanReview: activeDecisions.length,
     },
     errors,
   };
@@ -250,6 +280,7 @@ export function subscribeToCommandCenter(organizationId: string, onChange: () =>
     .on("postgres_changes", { event: "*", schema: "public", table: "specialist_workflow_deployments", filter: `organization_id=eq.${organizationId}` }, () => onChange())
     .on("postgres_changes", { event: "*", schema: "public", table: "workflow_executions", filter: `organization_id=eq.${organizationId}` }, () => onChange())
     .on("postgres_changes", { event: "*", schema: "public", table: "activity_logs", filter: `organization_id=eq.${organizationId}` }, () => onChange())
+    .on("postgres_changes", { event: "*", schema: "public", table: "command_decisions", filter: `organization_id=eq.${organizationId}` }, () => onChange())
     .subscribe();
 
   return () => {
