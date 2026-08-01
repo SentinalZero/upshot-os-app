@@ -23,8 +23,8 @@ export default function AccountSettings() {
           <div className="flex items-center gap-4">
             <Link href="/app"><img src="/assets/upshot-theory-logo.png" alt="Upshot Theory" className="h-10 w-auto" /></Link>
             <nav className="hidden items-center gap-5 md:flex" aria-label="Primary navigation">
-              <Link href="/app" className="text-xs text-muted-foreground transition-colors hover:text-foreground">Command Center</Link>
-              <Link href="/app/connections" className="text-xs text-muted-foreground transition-colors hover:text-foreground">Business Systems</Link>
+              <Link href="/app" className="text-xs text-muted-foreground transition-colors hover:text-foreground">Today</Link>
+              <Link href="/app/connections" className="text-xs text-muted-foreground transition-colors hover:text-foreground">Systems</Link>
               <span className="text-xs font-semibold text-foreground">Settings</span>
             </nav>
           </div>
@@ -34,7 +34,7 @@ export default function AccountSettings() {
 
       <main className="container py-8 lg:py-12">
         <Link href="/app" className="mb-6 inline-flex items-center gap-2 text-xs text-muted-foreground transition-colors hover:text-foreground">
-          <ChevronLeft className="h-4 w-4" /> Back to Command Center
+          <ChevronLeft className="h-4 w-4" /> Back to Today
         </Link>
 
         <div className="mb-8">
