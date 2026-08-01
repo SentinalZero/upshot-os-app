@@ -22,8 +22,8 @@ import { deployDigitalSpecialist, mapOversightMode, toSlug, type DeployConfig } 
 const HOURLY_VALUE = 45;
 const MINUTES_RECLAIMED_PER_SUCCESSFUL_EXECUTION = 14;
 const completedStatuses = new Set(["successful", "success", "completed"]);
-const customerSuccessScenario = prototypeData.scenarios["Customer Success"];
-const customerSuccessRole = prototypeData.roles.find(item => item.name === customerSuccessScenario.role) ?? prototypeData.roles[0];
+const serviceBusinessScenario = prototypeData.scenarios["Service Business"];
+const receptionistRole = prototypeData.roles.find(item => item.name === serviceBusinessScenario.role) ?? prototypeData.roles[0];
 
 const steps = [
   { eyebrow: "Your role", title: "What do you do?", description: "Choose the role that best matches the work you want help with." },
@@ -46,11 +46,11 @@ export default function DeployV2() {
   const [, navigate] = useLocation();
 
   const [step, setStep] = useState(0);
-  const [industry, setIndustry] = useState<IndustryKey>("Customer Success");
-  const [role, setRole] = useState<Role>(customerSuccessRole);
-  const [tasks, setTasks] = useState<string[]>([...customerSuccessScenario.tasks]);
-  const [apps, setApps] = useState<string[]>([...customerSuccessScenario.apps]);
-  const [oversight, setOversight] = useState<string[]>(prototypeData.industries["Customer Success"].approvalTemplates.slice(0, 2));
+  const [industry, setIndustry] = useState<IndustryKey>("Service Business");
+  const [role, setRole] = useState<Role>(receptionistRole);
+  const [tasks, setTasks] = useState<string[]>([...serviceBusinessScenario.tasks]);
+  const [apps, setApps] = useState<string[]>([...serviceBusinessScenario.apps]);
+  const [oversight, setOversight] = useState<string[]>(prototypeData.industries["Service Business"].approvalTemplates.slice(0, 2));
   const [specialistName, setSpecialistName] = useState("Emma");
   const [deploying, setDeploying] = useState(false);
   const [deployed, setDeployed] = useState(false);
@@ -84,9 +84,12 @@ export default function DeployV2() {
   };
 
   const chooseRole = (next: Role) => {
+    const matchingIndustry = next.bestFit as IndustryKey;
     setRole(next);
+    setIndustry(matchingIndustry);
     setTasks([...next.tasks.slice(0, 4)]);
     setApps([...next.defaultApps]);
+    setOversight(prototypeData.industries[matchingIndustry].approvalTemplates.slice(0, 2));
     resetDeployment();
   };
 
