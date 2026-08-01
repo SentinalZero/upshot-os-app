@@ -14,6 +14,7 @@ import ForgotPassword from "./pages/ForgotPassword";
 import OnboardingOrganization from "./pages/OnboardingOrganization";
 import AppDashboard from "./pages/AppDashboard";
 import Workforce from "./pages/Workforce";
+import SpecialistDetail from "./pages/SpecialistDetail";
 import DeployV2 from "./pages/DeployV2";
 import Connections from "./pages/Connections";
 import AccountSettings from "./pages/AccountSettings";
@@ -30,6 +31,7 @@ function Router() {
       <Route path={"/signup"} component={Signup} />
       <Route path={"/forgot-password"} component={ForgotPassword} />
       <Route path={"/onboarding/organization"}><ProtectedRoute><OnboardingOrganization /></ProtectedRoute></Route>
+      <Route path={"/app/workforce/:specialistId"}><AppRoute><SpecialistDetail /></AppRoute></Route>
       <Route path={"/app/workforce"}><AppRoute><Workforce /></AppRoute></Route>
       <Route path={"/app"}><AppRoute><AppDashboard /></AppRoute></Route>
       <Route path={"/app/deploy"}><AppRoute><DeployV2 /></AppRoute></Route>
