@@ -104,7 +104,7 @@ function RoleCard({ specialist, summary, capabilityCount }: { specialist: Digita
       </div>
       <div className="grid grid-cols-1 border-t border-subtle bg-background/20 sm:grid-cols-2">
         <div className="border-b border-subtle p-5 sm:border-b-0 sm:border-r"><div className="flex items-center gap-2 text-gold"><ShieldCheck className="h-4 w-4" /><span className="text-[9px] font-mono uppercase tracking-wider">Human oversight</span></div><p className="mt-2 text-xs leading-5 text-muted-foreground">Works independently within configured read, draft, recommend, approval, and execution boundaries.</p></div>
-        <Link href="/app" className="group flex items-center justify-between p-5 text-sm font-semibold"><span>View Specialist</span><ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1 group-hover:text-gold" /></Link>
+        <Link href={`/app/workforce/${specialist.id}`} className="group flex items-center justify-between p-5 text-sm font-semibold"><span>View Specialist</span><ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1 group-hover:text-gold" /></Link>
       </div>
     </article>
   );
